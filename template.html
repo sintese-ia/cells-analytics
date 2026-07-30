@@ -246,20 +246,33 @@ function agg(j,{canalView=false}={}){
   if(inP(d,j)){A.plat_c+=(+p.compras||0);A.plat_r+=(+p.receita||0)}}
  return A;
 }
-function serie(j,g){
+// diaMax: corta todo mes no mesmo dia. Serve para comparar o mes CORRENTE (incompleto) com o
+// anterior sem mentir — comparar 30 dias contra 31 inventa queda. Ver MESPARC abaixo.
+function serie(j,g,diaMax){
  const m={};
  const put=k=>m[k]||(m[k]=Object.assign({k},Z()));
  for(const r of dias){
-  if(!inP(r.dia,j))continue;const c=cCan(r);
+  if(!inP(r.dia,j))continue;
+  if(diaMax&&+r.dia.slice(8,10)>diaMax)continue;
+  const c=cCan(r);
   if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
   const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
   o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o.cli+=r.clientes;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos}
  for(const s of spend){
   if(!inP(s.dia,j))continue; if(S.can&&s.fonte!==S.can)continue;
   if(S.gru&&(GRUPO[s.fonte]||'Outros')!==S.gru)continue;
+  if(diaMax&&+s.dia.slice(8,10)>diaMax)continue;
   const k=g==='mes'?s.dia.slice(0,7):g==='sem'?semK(s.dia):s.dia;put(k).spend+=(+s.custo)}
  return Object.values(m).sort((a,b)=>a.k<b.k?-1:1);
 }
+
+// MES PARCIAL. Em 30/07/2026 eu li "junho 77 assinantes, julho 72" e conclui queda. Era falso:
+// 7 das 13 assinaturas do clube cobram no dia 30/31, e julho ainda nao tinha cobrado ninguem.
+// Comparado dia-a-dia (ate o dia 29), julho era o MELHOR mes, nao o pior.
+// Enquanto o mes corrente nao fecha, ele nunca pode ser comparado com mes inteiro.
+const ultimoDiaDoMes = k => new Date(Date.UTC(+k.slice(0,4), +k.slice(5,7), 0)).getUTCDate();
+const DIACORTE = +MAX.slice(8,10);
+const MESPARC  = DIACORTE < ultimoDiaDoMes(MAX) ? MAX.slice(0,7) : null;
 function semK(d){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()-x.getDay());return x.toISOString().slice(0,10)}
 
 /* ========== métricas (camada semântica única) ========== */
@@ -549,9 +562,12 @@ function pgMensal(){
  const sm=serie([MIN,MAX],'mes');
  const ind=S.ind, m=M[ind]||M.rec;
  const mx=Math.max(...sm.map(d=>{const A={...Z(),...d};return m.g(A)||0}))||1;
+ // "melhor mes" so pode sair de mes FECHADO — senao o mes em curso ganha ou perde por acidente
+ const mxFechado=Math.max(...sm.filter(d=>d.k!==MESPARC).map(d=>{const A={...Z(),...d};return m.g(A)||0}),0);
  const bars=sm.map((d,i)=>{const A={...Z(),...d},v=m.g(A)||0,w=100/sm.length;
-  const best=v===mx;
-  return `<g><rect x="${i*w+w*.16}%" y="${100-v/mx*100}%" width="${w*.68}%" height="${v/mx*100}%" fill="${best?'var(--lj)':'var(--pt)'}"><title>${MSL[+d.k.slice(5,7)-1]}: ${m.f(v)}</title></rect></g>`}).join('');
+  const parcial=d.k===MESPARC, best=!parcial&&v===mxFechado&&v>0;
+  return `<g><rect x="${i*w+w*.16}%" y="${100-v/mx*100}%" width="${w*.68}%" height="${v/mx*100}%"
+   fill="${best?'var(--lj)':'var(--pt)'}" ${parcial?'opacity=".42"':''}><title>${MSL[+d.k.slice(5,7)-1]}: ${m.f(v)}${parcial?` — PARCIAL, só até o dia ${DIACORTE}`:''}</title></rect></g>`}).join('');
  // média móvel 3 meses
  const vals=sm.map(d=>{const A={...Z(),...d};return m.g(A)||0});
  const mm=vals.map((_,i)=>i<2?null:(vals[i]+vals[i-1]+vals[i-2])/3);
@@ -562,11 +578,14 @@ function pgMensal(){
   ['— Compra única',['antigo_avulso']],['— Início de assinatura',['antigo_inicio_assinatura']],
   ['Assinantes recorrentes',['recorrente']]];
  const meses=sm.map(d=>d.k);
+ // mesma serie, mas com todo mes cortado no dia de hoje — base da comparacao honesta
+ const smC=MESPARC?serie([MIN,MAX],'mes',DIACORTE):[];
  const piv=CATL.map(([nome,cats])=>{
   const o={nome,_sub:nome.startsWith('—'),_tot:nome==='Total'};
   let tt=0;
   meses.forEach(mk2=>{const d=sm.find(x=>x.k===mk2)||{};
-   const v=cats.reduce((a,c)=>a+((d['r_'+c])||0),0); o[mk2]=v; tt+=v});
+   const v=cats.reduce((a,c)=>a+((d['r_'+c])||0),0); o[mk2]=v; tt+=v;
+   const dc=smC.find(x=>x.k===mk2); if(dc)o['_c'+mk2]=cats.reduce((a,c)=>a+((dc['r_'+c])||0),0)});
   o.total=tt; return o});
  const mxCell=Math.max(...piv.filter(p=>!p._tot).flatMap(p=>meses.map(mk2=>p[mk2])));
  const cols=[{k:'n',t:'Categoria',l:1,fx:1,f:r=>r.nome,raw:r=>r.nome},
@@ -576,22 +595,34 @@ function pgMensal(){
     return `<span style="background:rgba(244,94,26,${int2});padding:2px 4px;border-radius:2px">${R0(v)}</span>`},
     raw:r=>r[mk2]})),
   {k:'tt',t:'Total do ano',f:r=>`<b>${R0(r.total)}</b>`,raw:r=>r.total},
-  {k:'var',t:'Variação último mês',f:r=>{const a=r[meses[meses.length-1]],b=r[meses[meses.length-2]];
-    return b?dlt(a,b):'<span class="na">—</span>'},raw:r=>r[meses[meses.length-1]]},
-  {k:'mm',t:'Média 3 meses',f:r=>{const l=meses.slice(-3).map(x=>r[x]);return R0(l.reduce((a,b)=>a+b,0)/3)},raw:r=>0}];
+  // Se o ultimo mes esta em curso, comparar contra o mes anterior INTEIRO inventa queda.
+  // Corta os dois no mesmo dia. Foi esse erro que me fez dizer "junho 77, julho 72, caiu".
+  {k:'var',t:MESPARC===meses[meses.length-1]?`Variação (até dia ${DIACORTE}, nos dois)`:'Variação último mês',
+   f:r=>{const u=meses[meses.length-1],p=meses[meses.length-2];
+    const a=MESPARC===u?(r['_c'+u]||0):r[u], b=MESPARC===u?(r['_c'+p]||0):r[p];
+    return b?dlt(a,b):'<span class="na">—</span>'},
+   raw:r=>{const u=meses[meses.length-1];return MESPARC===u?(r['_c'+u]||0):r[u]}},
+  // media so de mes FECHADO — incluir o mes em curso puxa a media para baixo sem motivo
+  {k:'mm',t:'Média 3 meses fechados',f:r=>{const l=meses.filter(x=>x!==MESPARC).slice(-3).map(x=>r[x]);
+    return l.length?R0(l.reduce((a,b)=>a+b,0)/l.length):'<span class="na">—</span>'},raw:r=>0}];
  const T=TB(cols,piv,null);
  // CAT e um mapa fixo das 6 categorias. Se a view emitir uma 7a, o dropdown a oferece e o
  // lookup direto quebrava a tela inteira — cai no proprio codigo da categoria em vez de estourar.
  const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+(CAT[S.cat]?.n||S.cat))].filter(Boolean).join(' · ');
  return `<div class="al o">Esta tela mostra <b>o ano inteiro por desenho</b> — o seletor de período não se aplica aqui.
   Canal, grupo e tipo de cliente <b>sim</b>${fAtivo?`: filtrando por ${fAtivo}`:''}.</div>
-  <div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês. A linha é a média móvel de três meses.</p></div>
+  ${MESPARC?`<div class="al w"><b>${MSL[+MESPARC.slice(5,7)-1]} ainda não fechou</b> — os dados vão só até o dia ${DIACORTE}.
+   A barra dele está esmaecida, não disputa "melhor mês" e não entra na média. A coluna de variação corta
+   os dois meses no <b>mesmo dia</b>, porque comparar mês em curso com mês inteiro inventa queda:
+   a cobrança de assinatura se concentra no fim do mês (7 das 13 do clube caem no dia 30/31).</div>`:''}
+  <div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês <b>fechado</b>. A linha é a média móvel de três meses.</p></div>
   <div class="fg"><label for="fi">Indicador</label><select id="fi">${Object.entries(M).map(([k,v])=>`<option value="${k}" ${k===ind?'selected':''}>${v.n}</option>`).join('')}</select></div></div>
   <div class="pn"><div class="pnb">
    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:210px;display:block" role="img" aria-label="Evolução mensal do indicador">${bars}
     <polyline points="${lp}" fill="none" stroke="#C9C9C4" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-dasharray="3 2"/></svg>
-   <div style="display:flex;margin-top:5px">${sm.map(d=>{const A={...Z(),...d};return `<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700">${m.f(m.g(A))}</div><div style="font-size:10px;color:var(--t3)">${MS[+d.k.slice(5,7)-1]}</div></div>`}).join('')}</div>
-   <div class="lgd"><span><i style="background:var(--pt)"></i>${m.n}</span><span><i style="background:var(--lj)"></i>melhor mês</span><span><i style="background:#C9C9C4"></i>média móvel 3 meses</span></div>
+   <div style="display:flex;margin-top:5px">${sm.map(d=>{const A={...Z(),...d};const pc=d.k===MESPARC;
+     return `<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;${pc?'color:var(--t3)':''}">${m.f(m.g(A))}</div><div style="font-size:10px;color:var(--t3)">${MS[+d.k.slice(5,7)-1]}${pc?'<br><span style="font-size:9px;color:var(--pt);font-weight:700">PARCIAL</span>':''}</div></div>`}).join('')}</div>
+   <div class="lgd"><span><i style="background:var(--pt)"></i>${m.n}</span><span><i style="background:var(--lj)"></i>melhor mês <b>fechado</b></span><span><i style="background:#C9C9C4"></i>média móvel 3 meses</span>${MESPARC?'<span><i style="background:var(--pt);opacity:.42"></i>mês em curso</span>':''}</div>
   </div></div></div>
  <div class="sc"><div class="sch"><div><h2>Faturamento por categoria e mês</h2><p>Intensidade do laranja proporcional ao valor da célula.</p></div></div>
   <div class="pn">${T.html}</div></div>`;
