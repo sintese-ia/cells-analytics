@@ -92,6 +92,11 @@ from core.vw_campanha_dia
 where spend>0 or ped_total>0`,
   sess: `select dia, canal, canal_aq, categoria, sessoes, dias, primeira_sessao, pedidos, receita
 from core.vw_sessoes_ate_compra`,
+  // Tempo entre etapas. Mediana e quartis, nunca so a media: a distribuicao tem cauda
+  // longa (conversao de amostra acontece entre 9 e 80 dias) e a media sozinha esconde isso.
+  // `nao_deram_o_passo` esta na view de proposito, para o numero nao parecer melhor do que e.
+  etapas: `select ord, etapa, pessoas, nao_deram_o_passo, p25_dias, mediana_dias, p75_dias,
+ media_dias, minimo_dias, maximo_dias from core.vw_tempo_entre_etapas order by ord`,
   // PAYBACK REAL. cac_aprox = gasto do mes / clientes cuja 1a compra PAGA foi atribuida ao canal
   // naquele mes. Nao usa is_new_customer (aquele campo conta quem so tinha amostra e inflou
   // a contagem 156 vs 53 em julho, produzindo um CAC 5x otimista).

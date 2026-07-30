@@ -843,7 +843,37 @@ function pgJornadas(){
  const fl=flows.map(([a,b,n])=>{const A2=nodes[a],B2=nodes[b],w=Math.max(2,n/mxn*70);
   return `<path d="M ${A2.x+26} ${A2.y+18} C ${(A2.x+B2.x)/2} ${A2.y+18}, ${(A2.x+B2.x)/2} ${B2.y+18}, ${B2.x} ${B2.y+18}"
    stroke="${B2.c}" stroke-opacity=".26" stroke-width="${w}" fill="none"><title>${A2.lb} → ${B2.lb}: ${IN(n)}</title></path>`}).join('');
- return `${blocoSess}<div class="sc"><div class="sch"><div><h2>Fluxo completo</h2><p>Espessura proporcional ao volume de pessoas. Passe o mouse para ver os números.</p></div></div>
+ // TEMPO ENTRE ETAPAS. Mediana e quartis: a distribuicao tem cauda longa e a media mente.
+ // Mostra tambem quem NAO deu o passo, senao a tela parece melhor do que e.
+ const ET=D.etapas||[];
+ const TE=TB([
+  {k:'e',t:'Etapa',l:1,fx:1,f:r=>r.etapa,raw:r=>r.ord},
+  {k:'p',t:'Deram o passo',f:r=>IN(+r.pessoas),raw:r=>+r.pessoas},
+  {k:'np',t:'Não deram',f:r=>+r.nao_deram_o_passo?`<span style="color:var(--pt)">${IN(+r.nao_deram_o_passo)}</span>`:'—',raw:r=>+r.nao_deram_o_passo},
+  {k:'tx',t:'% que deu o passo',f:r=>{const t=+r.pessoas+ +r.nao_deram_o_passo;
+    const v=dv(+r.pessoas,t); return v==null?'—':`<b style="color:${v>=.5?'var(--vd)':'var(--pt)'}">${PC(v*100)}</b>`},
+   raw:r=>dv(+r.pessoas,+r.pessoas+ +r.nao_deram_o_passo)??-1},
+  {k:'md',t:'Mediana',f:r=>`<b>${IN(+r.mediana_dias)}d</b>`,raw:r=>+r.mediana_dias},
+  {k:'iq',t:'Metade do meio (p25–p75)',f:r=>`${IN(+r.p25_dias)}–${IN(+r.p75_dias)}d`,raw:r=>+r.p75_dias-+r.p25_dias},
+  {k:'av',t:'Média',f:r=>`<span class="c">${IN(+r.media_dias)}d</span>`,raw:r=>+r.media_dias},
+  {k:'mm',t:'Extremos',f:r=>`<span class="c f">${IN(+r.minimo_dias)}–${IN(+r.maximo_dias)}d</span>`,raw:r=>+r.maximo_dias}
+ ],ET,{});
+ const eRen=ET.find(r=>+r.ord===6), eAss=ET.find(r=>+r.ord===4), eRec=ET.find(r=>+r.ord===2);
+ const blocoEtapas = ET.length ? `<div class="sc"><div class="sch"><div><h2>Quanto tempo cada passo demora</h2>
+  <p>Mediana e quartis, não média: a distribuição tem cauda longa e a média sozinha mente. Cada linha
+  conta <b>só quem já completou</b> a transição — a coluna <b>Não deram</b> mostra o tamanho do que ficou fora,
+  para o tempo não parecer melhor do que é. <b>O seletor de período não se aplica</b>: a jornada atravessa meses.</p></div></div>
+  <div class="pn">${TE.html}</div>
+  ${eRen?`<div class="al o" style="margin-top:8px"><b>A assinatura é uma máquina:</b> renovação a renovação, a mediana é
+   ${IN(+eRen.mediana_dias)} dias e a metade do meio cabe em ${IN(+eRen.p25_dias)}–${IN(+eRen.p75_dias)} dias.
+   É isso que valida usar "faltou um mês" como proxy de churn — o intervalo é mensal e apertado, não disperso.</div>`:''}
+  ${eAss&&eRec?`<div class="al c"><b>O gargalo não é a primeira compra, é a segunda.</b>
+   Só ${PC(dv(+eRec.pessoas,+eRec.pessoas+ +eRec.nao_deram_o_passo)*100)} de quem compra uma vez compra de novo
+   (${IN(+eRec.nao_deram_o_passo)} pessoas nunca voltaram), e converter comprador avulso em assinante acontece com
+   ${PC(dv(+eAss.pessoas,+eAss.pessoas+ +eAss.nao_deram_o_passo)*100)} deles, com mediana de
+   <b>${IN(+eAss.mediana_dias)} dias</b>. É o que sustenta a média de 1,67 pedidos por cliente — e o que trava o payback de mídia.</div>`:''}
+  </div>` : '';
+ return `${blocoSess}${blocoEtapas}<div class="sc"><div class="sch"><div><h2>Fluxo completo</h2><p>Espessura proporcional ao volume de pessoas. Passe o mouse para ver os números.</p></div></div>
   <div class="pn"><div class="pnb"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:250px;display:block" role="img" aria-label="Fluxo de pessoas entre amostra, compra, assinatura e renovação">${fl}${sk}</svg></div></div></div>
  <div class="sc"><div class="sch"><div><h2>Jornada de amostra</h2><p>Média de <b>${IN(+(D.am_dias[0]||{}).media)} dias</b> até a primeira compra, mediana de <b>${IN(+(D.am_dias[0]||{}).mediana)}</b>.</p></div></div>
   <div class="pn"><div class="pnb">${jAm}</div></div></div>
@@ -886,6 +916,7 @@ function pgDefinicoes(){
   ['Margem de contribuição','Faturamento − CMV − taxas.','receita − CMV − (receita × 12,7%)','commerce.produto_custo + parametros_financeiros','ANTES do frete pago. O frete não está no banco: investigado, o Bling só preenche em 5% dos pedidos.'],
   ['Faturamento líquido','Bruto menos descontos, cancelamentos e reembolsos.','bruto − desconto − reembolso','core.vw_app_pedido','Alterna com bruto nas Configurações. Medido: 18 pedidos refunded, 195 com cancelled_at.'],
   ['LTV do cohort','Receita acumulada ÷ clientes do cohort.','receita acumulada ÷ clientes','core.vw_app_pedido','Comparar só cohorts de idade parecida.'],
+  ['Tempo entre etapas','Dias entre um passo da jornada e o seguinte.','mediana e quartis dos dias entre os dois eventos','core.vw_tempo_entre_etapas','Mediana, não média: a distribuição tem cauda longa. Conta só quem completou a transição — a coluna "Não deram" mostra o que ficou fora.'],
   ['Margem ÷ CAC (180d)','Margem de contribuição que o cohort acumulou em 180 dias, dividida pelo CAC do mês em que ele foi adquirido.','margem 180d por cliente ÷ CAC do mês','core.vw_payback_coorte','Abaixo de 1,00 o cohort não devolveu a mídia. O denominador usa clientes com PRIMEIRA COMPRA PAGA no mês, não o campo is_new_customer — aquele campo conta quem só tinha comprado amostra e inflava a contagem (156 contra 53 em julho), produzindo um CAC 5x otimista.'],
   ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.']
  ];
