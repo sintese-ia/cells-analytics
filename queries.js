@@ -90,4 +90,6 @@ from m left join d on d.mes=m.mes where m.mes < (select max(mes) from mens) orde
  ped_aquisicao, rec_aquisicao, assin_novo, marg_total, marg_aquisicao
 from core.vw_campanha_dia
 where spend>0 or ped_total>0`,
+  sess: `select dia, canal, canal_aq, categoria, sessoes, dias, primeira_sessao, pedidos, receita
+from core.vw_sessoes_ate_compra`,
 };

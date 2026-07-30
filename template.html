@@ -219,6 +219,7 @@ function agg(j,{canalView=false}={}){
   if(!inP(r.dia,j))continue;
   const c=cCan(r);
   if(S.can&&c!==S.can)continue;
+  if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
   if(S.cat&&r.categoria!==S.cat)continue;
   // REGRA: na visão por canal (eixo=pedido) a recorrente NAO entra —
   // atribuir renovação a canal não faz sentido, o canal não causou a renovação.
@@ -234,6 +235,7 @@ function agg(j,{canalView=false}={}){
  for(const s of spend){
   if(!inP(s.dia,j))continue;
   if(S.can&&s.fonte!==S.can)continue;
+  if(S.gru&&(GRUPO[s.fonte]||'Outros')!==S.gru)continue;
   A.spend+=(+s.custo);
   const o=A.can[s.fonte]||(A.can[s.fonte]=Object.assign(Z(),{canal:s.fonte}));o.spend+=(+s.custo)}
  for(const p of D.plat){const d=String(p.dia).slice(0,10);
@@ -245,11 +247,12 @@ function serie(j,g){
  const put=k=>m[k]||(m[k]=Object.assign({k},Z()));
  for(const r of dias){
   if(!inP(r.dia,j))continue;const c=cCan(r);
-  if(S.can&&c!==S.can)continue; if(S.cat&&r.categoria!==S.cat)continue;
+  if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
   const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
   o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o.cli+=r.clientes;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos}
  for(const s of spend){
   if(!inP(s.dia,j))continue; if(S.can&&s.fonte!==S.can)continue;
+  if(S.gru&&(GRUPO[s.fonte]||'Outros')!==S.gru)continue;
   const k=g==='mes'?s.dia.slice(0,7):g==='sem'?semK(s.dia):s.dia;put(k).spend+=(+s.custo)}
  return Object.values(m).sort((a,b)=>a.k<b.k?-1:1);
 }
@@ -561,7 +564,10 @@ function pgMensal(){
     return b?dlt(a,b):'<span class="na">—</span>'},raw:r=>r[meses[meses.length-1]]},
   {k:'mm',t:'Média 3 meses',f:r=>{const l=meses.slice(-3).map(x=>r[x]);return R0(l.reduce((a,b)=>a+b,0)/3)},raw:r=>0}];
  const T=TB(cols,piv,null);
- return `<div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês. A linha é a média móvel de três meses.</p></div>
+ const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+CAT[S.cat].n)].filter(Boolean).join(' · ');
+ return `<div class="al o">Esta tela mostra <b>o ano inteiro por desenho</b> — o seletor de período não se aplica aqui.
+  Canal, grupo e tipo de cliente <b>sim</b>${fAtivo?`: filtrando por ${fAtivo}`:''}.</div>
+  <div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês. A linha é a média móvel de três meses.</p></div>
   <div class="fg"><label for="fi">Indicador</label><select id="fi">${Object.entries(M).map(([k,v])=>`<option value="${k}" ${k===ind?'selected':''}>${v.n}</option>`).join('')}</select></div></div>
   <div class="pn"><div class="pnb">
    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:210px;display:block" role="img" aria-label="Evolução mensal do indicador">${bars}
@@ -575,9 +581,14 @@ function pgMensal(){
 
 function pgCampanhas(){
  const R=(D.camp||[]).filter(r=>+r.spend>0||+r.ped_total>0);
+ // periodo: a campanha tem janela propria (de..ate) — filtra por sobreposicao com o periodo
+ const [pi,pf]=jan();
+ const Rp=R.filter(r=>{ if(!r.de&&!r.ate)return true;
+   const de=String(r.de||'2026-01-01').slice(0,10), ate=String(r.ate||MAX).slice(0,10);
+   return de<=pf && ate>=pi;});
  const nivel=S.cnivel||'campanha';
  const ag={};
- for(const r of R){
+ for(const r of Rp){
   const k=nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)'));
   const o=ag[k]||(ag[k]={k,campanha:r.campanha,conjunto:r.conjunto,spend:0,impr:0,cliques:0,
     ped_total:0,ped_amostra:0,ped_aquisicao:0,rec_aquisicao:0,rec_amostra:0,rec_total:0,
@@ -615,7 +626,8 @@ function pgCampanhas(){
  ];
  const T=TB(cols,rows,tot,false);
  const semVenda=rows.filter(r=>r.spend>300&&r.ped_total===0);
- return `<div class="sc"><div class="gr g6">
+ const aviso = Rp.length<R.length?`<div class="al o">Mostrando <b>${Rp.length} de ${R.length}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} — filtrado pelo período <b>${DT(pi)} a ${DT(pf)}</b> (sobreposição com a janela de veiculação).</div>`:'';
+ return `${aviso}<div class="sc"><div class="gr g6">
    <div class="cd"><div class="k">Gasto</div><div class="v">${R0(tot.spend)}</div><div class="c f">${rows.length} ${nivel==='campanha'?'campanhas':'conjuntos'}</div></div>
    <div class="cd"><div class="k">Clientes novos</div><div class="v">${IN(tot.ped_aquisicao)}</div></div>
    <div class="cd"><div class="k">CAC de cliente</div><div class="v">${R$(dv(tot.spend,tot.ped_aquisicao))}</div></div>
@@ -639,12 +651,17 @@ function pgCohorts(){
  const cb={}; D.cbase.forEach(r=>{const k=r.co; (cb[k]||(cb[k]={co:k,cli:0,idade:0,canais:{}}));
   cb[k].cli+=r.cli; cb[k].idade=Math.max(cb[k].idade,+r.idade); cb[k].canais[r.canal]=(cb[k].canais[r.canal]||0)+r.cli});
  const filtCanal=S.can;
+ const filtGrupo=S.gru, filtCat=S.cat;
  const H={};
  D.heat.forEach(r=>{ if(filtCanal&&r.canal!==filtCanal)return;
+  if(filtGrupo&&(GRUPO[r.canal]||'Outros')!==filtGrupo)return;
+  if(filtCat&&r.cat1!==filtCat)return;
   const k=r.co+'|'+r.mn; (H[k]||(H[k]={rec:0,cli:0,ped:0})); H[k].rec+=(+r.rec); H[k].cli=Math.max(H[k].cli,+r.cli); H[k].ped+=(+r.ped)});
- const cos=[...new Set(D.heat.filter(r=>!filtCanal||r.canal===filtCanal).map(r=>r.co))].sort();
+ const cos=[...new Set(D.heat.filter(r=>(!filtCanal||r.canal===filtCanal)
+  &&(!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo)&&(!filtCat||r.cat1===filtCat)).map(r=>r.co))].sort();
  const MN=[0,1,2,3,4,5,6];
- const base={}; cos.forEach(c=>{base[c]=D.cbase.filter(r=>r.co===c&&(!filtCanal||r.canal===filtCanal)).reduce((a,r)=>a+r.cli,0)});
+ const base={}; cos.forEach(c=>{base[c]=D.cbase.filter(r=>r.co===c&&(!filtCanal||r.canal===filtCanal)
+  &&(!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo)&&(!filtCat||r.cat1===filtCat)).reduce((a,r)=>a+r.cli,0)});
  // acumulado
  const acc={}; cos.forEach(c=>{let s=0; MN.forEach(n=>{s+=(H[c+'|'+n]?.rec||0); acc[c+'|'+n]=s})});
  const vals=cos.flatMap(c=>MN.map(n=>{
@@ -682,7 +699,8 @@ function pgCohorts(){
  const sel=cos[cos.length-1];
  const selB=base[sel]||0, selAcc=acc[sel+'|6']||acc[sel+'|3']||0;
  return `<div class="sc"><div class="sch"><div><h2>Cohorts por mês da primeira compra paga</h2>
-  <p>Comparar cohort de dois meses com cohort de nove meses é a armadilha clássica — a etiqueta <span class="pl i">jovem</span> marca quem tem menos de 120 dias. Amostra não abre cohort de cliente pagante: tem visão própria abaixo.</p></div>
+  <p>O cohort é definido pelo mês da primeira compra, então <b>o seletor de período não se aplica</b> —
+  canal, grupo e tipo da primeira compra sim. Comparar cohort de dois meses com cohort de nove meses é a armadilha clássica — a etiqueta <span class="pl i">jovem</span> marca quem tem menos de 120 dias. Amostra não abre cohort de cliente pagante: tem visão própria abaixo.</p></div>
   <div class="chk">${[['receita','Receita acumulada'],['ltv','LTV por cliente'],['recompra','Recompra %']].map(([k,n])=>`<button data-cab="${k}" class="${ab===k?'on':''}">${n}</button>`).join('')}</div></div>
   <div class="pn">${hm}</div>
   ${filtCanal?`<div class="al o" style="margin-top:8px">Filtrado por canal de aquisição <b>${filtCanal}</b>.</div>`:''}</div>
@@ -703,6 +721,41 @@ function pgCohorts(){
 }
 
 function pgJornadas(){
+
+ const SS=(D.sess||[]).filter(r=>inP(String(r.dia).slice(0,10),jan())
+   && (!S.can||r.canal===S.can) && (!S.cat||r.categoria===S.cat)
+   && (!S.gru||(GRUPO[r.canal]||'Outros')===S.gru));
+ const faixa=n=>n<=1?'1 sessão':n===2?'2 sessões':n<=3?'3 sessões':n<=5?'4-5 sessões':n<=10?'6-10 sessões':'11+ sessões';
+ const ordF=['1 sessão','2 sessões','3 sessões','4-5 sessões','6-10 sessões','11+ sessões'];
+ const fx={}; let totP=0, somaS=0, somaD=0;
+ for(const r of SS){const k=faixa(+r.sessoes); (fx[k]||(fx[k]={k,ped:0,rec:0,dias:0}));
+   fx[k].ped+=+r.pedidos; fx[k].rec+=+r.receita; fx[k].dias+=(+r.dias)*(+r.pedidos);
+   totP+=+r.pedidos; somaS+=(+r.sessoes)*(+r.pedidos); somaD+=(+r.dias)*(+r.pedidos)}
+ const mxF=Math.max(...Object.values(fx).map(f=>f.ped),1);
+ const porCanal={};
+ for(const r of SS){const o=porCanal[r.canal]||(porCanal[r.canal]={canal:r.canal,ped:0,s:0,d:0});
+   o.ped+=+r.pedidos; o.s+=(+r.sessoes)*(+r.pedidos); o.d+=(+r.dias)*(+r.pedidos)}
+ const canRows=Object.values(porCanal).filter(o=>o.ped>=3).sort((a,b)=>b.ped-a.ped);
+ const TS=TB([
+   {k:'c',t:'Canal',l:1,fx:1,f:r=>r.canal,raw:r=>r.canal,tf:()=>'Média geral'},
+   {k:'p',t:'Pedidos',f:r=>IN(r.ped),raw:r=>r.ped,tf:()=>IN(totP)},
+   {k:'s',t:'Sessões até comprar',f:r=>nf(r.s/r.ped,2),raw:r=>r.s/r.ped,tf:()=>nf(somaS/(totP||1),2)},
+   {k:'d',t:'Dias até comprar',f:r=>nf(r.d/r.ped,1),raw:r=>r.d/r.ped,tf:()=>nf(somaD/(totP||1),1)}
+ ],canRows,{});
+ const blocoSess = SS.length ? `<div class="sc"><div class="sch"><div><h2>Sessões até a compra</h2>
+   <p>Quantas visitas a pessoa fez antes de comprar, na janela de 45 dias do modelo de atribuição.
+   Disponível só onde a origem foi <b>medida por sessão</b> — em landing, herdada ou direct não existe contagem confiável.</p></div></div>
+   <div class="gr g6">
+     <div class="cd"><div class="k">Média de sessões</div><div class="v">${nf(somaS/(totP||1),2)}</div><div class="c f">${IN(totP)} pedidos medidos</div></div>
+     <div class="cd"><div class="k">Média de dias</div><div class="v">${nf(somaD/(totP||1),1)}</div><div class="c f">da 1ª visita à compra</div></div>
+     <div class="cd"><div class="k">Comprou na 1ª visita</div><div class="v">${PC(dv(fx['1 sessão']?.ped||0,totP)*100)}</div><div class="c f">${IN(fx['1 sessão']?.ped||0)} pedidos</div></div>
+     <div class="cd"><div class="k">Precisou de 4+</div><div class="v">${PC(dv((fx['4-5 sessões']?.ped||0)+(fx['6-10 sessões']?.ped||0)+(fx['11+ sessões']?.ped||0),totP)*100)}</div></div>
+   </div>
+   <div class="pn"><div class="pnb"><div class="fn">${ordF.filter(k=>fx[k]).map(k=>`<div class="fnr">
+     <div class="fnb ${k==='1 sessão'?'lj':''}" style="width:${Math.max(56,fx[k].ped/mxF*300)}px">${IN(fx[k].ped)}</div>
+     <div class="fnl">${k} · <b>${PC(fx[k].ped/totP*100)}</b> · ${R0(fx[k].rec)} · ${nf(fx[k].dias/fx[k].ped,1)} dias em média</div>
+   </div>`).join('')}</div></div></div>
+   <div class="pn" style="margin-top:10px"><div class="pnh"><h3>Por canal</h3></div>${TS.html}</div></div>` : '';
  const j={}; D.jor.forEach(x=>j[x.e]={n:+x.n,v:+x.v});
  const F=(t,et,tot)=>`<div class="fnr"><div class="fnb ${et.cor||''}" style="width:${Math.max(56,(et.n/(tot||1))*300)}px">${IN(et.n)}</div>
   <div class="fnl">${t}${tot?` · <b>${PC(et.n/tot*100)}</b>`:''}</div></div>`;
@@ -747,7 +800,7 @@ function pgJornadas(){
  const fl=flows.map(([a,b,n])=>{const A2=nodes[a],B2=nodes[b],w=Math.max(2,n/mxn*70);
   return `<path d="M ${A2.x+26} ${A2.y+18} C ${(A2.x+B2.x)/2} ${A2.y+18}, ${(A2.x+B2.x)/2} ${B2.y+18}, ${B2.x} ${B2.y+18}"
    stroke="${B2.c}" stroke-opacity=".26" stroke-width="${w}" fill="none"><title>${A2.lb} → ${B2.lb}: ${IN(n)}</title></path>`}).join('');
- return `<div class="sc"><div class="sch"><div><h2>Fluxo completo</h2><p>Espessura proporcional ao volume de pessoas. Passe o mouse para ver os números.</p></div></div>
+ return `${blocoSess}<div class="sc"><div class="sch"><div><h2>Fluxo completo</h2><p>Espessura proporcional ao volume de pessoas. Passe o mouse para ver os números.</p></div></div>
   <div class="pn"><div class="pnb"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:250px;display:block" role="img" aria-label="Fluxo de pessoas entre amostra, compra, assinatura e renovação">${fl}${sk}</svg></div></div></div>
  <div class="sc"><div class="sch"><div><h2>Jornada de amostra</h2><p>Média de <b>${IN(+(D.am_dias[0]||{}).media)} dias</b> até a primeira compra, mediana de <b>${IN(+(D.am_dias[0]||{}).mediana)}</b>.</p></div></div>
   <div class="pn"><div class="pnb">${jAm}</div></div></div>
