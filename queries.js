@@ -85,4 +85,9 @@ d as (select a.mes, count(*) n from mens a
 select to_char(m.mes,'YYYY-MM') mes, m.ativos::int, coalesce(d.n,0)::int perdidos,
  round(100.0*coalesce(d.n,0)/m.ativos,1) churn_pct
 from m left join d on d.mes=m.mes where m.mes < (select max(mes) from mens) order by 1`,
+  camp: `select campanha, conjunto, ids_no_nome, de, ate, spend, impr, cliques,
+ compras_plat, receita_plat, ped_total, rec_total, ped_amostra, rec_amostra,
+ ped_aquisicao, rec_aquisicao, assin_novo, marg_total, marg_aquisicao
+from core.vw_campanha_dia
+where spend>0 or ped_total>0`,
 };

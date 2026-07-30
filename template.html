@@ -353,6 +353,7 @@ const PGS={
  atribuicao:{t:'Atribuição',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
  tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
+ campanhas:{t:'Campanhas',ic:'M3 11l19-7-7 19-3-8-9-4z'},
  cohorts:{t:'Cohorts',ic:'M4 6h16M4 12h11M4 18h6'},
  jornadas:{t:'Jornadas',ic:'M4 17h4l3-10 3 6 2-4h4'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
@@ -572,6 +573,67 @@ function pgMensal(){
   <div class="pn">${T.html}</div></div>`;
 }
 
+function pgCampanhas(){
+ const R=(D.camp||[]).filter(r=>+r.spend>0||+r.ped_total>0);
+ const nivel=S.cnivel||'campanha';
+ const ag={};
+ for(const r of R){
+  const k=nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)'));
+  const o=ag[k]||(ag[k]={k,campanha:r.campanha,conjunto:r.conjunto,spend:0,impr:0,cliques:0,
+    ped_total:0,ped_amostra:0,ped_aquisicao:0,rec_aquisicao:0,rec_amostra:0,rec_total:0,
+    marg_total:0,marg_aquisicao:0,assin_novo:0,compras_plat:0,receita_plat:0,ids:0});
+  for(const f of ['spend','impr','cliques','ped_total','ped_amostra','ped_aquisicao','rec_aquisicao',
+    'rec_amostra','rec_total','marg_total','marg_aquisicao','assin_novo','compras_plat','receita_plat'])
+   o[f]+= +(r[f]||0);
+  o.ids=Math.max(o.ids,+(r.ids_no_nome||0));
+ }
+ const rows=Object.values(ag).sort((a,b)=>b.spend-a.spend);
+ const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},{});
+ const mxs=Math.max(...rows.map(r=>r.spend),1);
+ const cols=[
+  {k:'n',t:nivel==='campanha'?'Campanha':'Campanha › Conjunto',l:1,fx:1,
+   f:r=>r.k+(r.ids>1?' <span class="pl r">'+r.ids+' ids</span>':''),raw:r=>r.k,tf:()=>'<b>Total</b>'},
+  {k:'s',t:'Gasto',f:r=>R0(r.spend)+` <span class="br2"><i style="width:${r.spend/mxs*100}%"></i></span>`,raw:r=>r.spend,tf:t=>R0(t.spend)},
+  {k:'aq',t:'Clientes novos',tip:'Cliente novo em compra cheia. Amostra tem coluna própria.',f:r=>IN(r.ped_aquisicao),raw:r=>r.ped_aquisicao,tf:t=>IN(t.ped_aquisicao)},
+  {k:'cac',t:'CAC de cliente',f:r=>{const v=dv(r.spend,r.ped_aquisicao);
+    return v==null?'<span class="na">—</span>':`<b style="color:${v<=250?'var(--vd)':v<=500?'var(--pt)':'var(--vm)'}">${R$(v)}</b>`},
+   raw:r=>dv(r.spend,r.ped_aquisicao)??1e9,tf:t=>R$(dv(t.spend,t.ped_aquisicao))},
+  {k:'raq',t:'Receita de novos',f:r=>R0(r.rec_aquisicao),raw:r=>r.rec_aquisicao,tf:t=>R0(t.rec_aquisicao)},
+  {k:'ncr',t:'NC-ROAS',f:r=>{const v=dv(r.rec_aquisicao,r.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>dv(r.rec_aquisicao,r.spend)??-1,tf:t=>RT(dv(t.rec_aquisicao,t.spend))},
+  {k:'am',t:'Amostras',ce:1,tip:'Pedido só de amostra (<R$50). Nunca conta como cliente novo.',f:r=>IN(r.ped_amostra),raw:r=>r.ped_amostra,tf:t=>IN(t.ped_amostra)},
+  {k:'cam',t:'Custo por amostra',ce:1,f:r=>{const v=dv(r.spend,r.ped_amostra);return v==null?'<span class="na">—</span>':R$(v)},raw:r=>dv(r.spend,r.ped_amostra)??1e9,tf:t=>R$(dv(t.spend,t.ped_amostra))},
+  {k:'an',t:'Novos assinantes',ce:1,f:r=>IN(r.assin_novo),raw:r=>r.assin_novo,tf:t=>IN(t.assin_novo)},
+  {k:'mt',t:'Margem total',f:r=>R0(r.marg_total),raw:r=>r.marg_total,tf:t=>R0(t.marg_total)},
+  {k:'mr',t:'Margem por real',tip:'Margem total ÷ gasto. Inclui a margem da amostra, que é receita real.',
+   f:r=>{const v=dv(r.marg_total,r.spend);return v==null?'<span class="na">—</span>':
+    `<b style="color:${v>=1?'var(--vd)':v>=.5?'var(--pt)':'var(--vm)'}">${RT(v)}</b>`},
+   raw:r=>dv(r.marg_total,r.spend)??-1,tf:t=>RT(dv(t.marg_total,t.spend))},
+  {k:'cl',t:'Cliques',f:r=>IN(r.cliques),raw:r=>r.cliques,tf:t=>IN(t.cliques)},
+  {k:'cpc',t:'CPC',f:r=>R$(dv(r.spend,r.cliques)),raw:r=>dv(r.spend,r.cliques)??0,tf:t=>R$(dv(t.spend,t.cliques))},
+  {k:'pl',t:'Compras (Meta diz)',tip:'O que a plataforma se atribui. Não somar com o nosso — pode ter sobreposição.',
+   f:r=>IN(r.compras_plat),raw:r=>r.compras_plat,tf:t=>IN(t.compras_plat)}
+ ];
+ const T=TB(cols,rows,tot,false);
+ const semVenda=rows.filter(r=>r.spend>300&&r.ped_total===0);
+ return `<div class="sc"><div class="gr g6">
+   <div class="cd"><div class="k">Gasto</div><div class="v">${R0(tot.spend)}</div><div class="c f">${rows.length} ${nivel==='campanha'?'campanhas':'conjuntos'}</div></div>
+   <div class="cd"><div class="k">Clientes novos</div><div class="v">${IN(tot.ped_aquisicao)}</div></div>
+   <div class="cd"><div class="k">CAC de cliente</div><div class="v">${R$(dv(tot.spend,tot.ped_aquisicao))}</div></div>
+   <div class="cd"><div class="k">Amostras</div><div class="v">${IN(tot.ped_amostra)}</div><div class="c f">custo ${R$(dv(tot.spend,tot.ped_amostra))}</div></div>
+   <div class="cd"><div class="k">Margem por real</div><div class="v">${RT(dv(tot.marg_total,tot.spend))}</div></div>
+   <div class="cd"><div class="k">Novos assinantes</div><div class="v">${IN(tot.assin_novo)}</div></div>
+  </div></div>
+  <div class="al o"><b>Cliente novo e amostra são colunas separadas de propósito.</b> Antes desta correção
+  a tela contava amostra como aquisição, e o CAC do conjunto de kit aparecia em R$ 9 — era custo por
+  amostra, não por cliente. O CAC real de cliente novo fica entre R$ 200 e R$ 575.</div>
+  ${semVenda.length?`<div class="al w"><b>${semVenda.length} ${nivel==='campanha'?'campanhas':'conjuntos'} com gasto acima de R$ 300 e zero pedido atribuído:</b>
+   ${semVenda.slice(0,5).map(r=>r.k+' ('+R0(r.spend)+')').join(' · ')}. Pode ser campanha de topo de funil, ou UTM que não chegou.</div>`:''}
+  <div class="sc"><div class="sch"><div><h2>Desempenho por ${nivel==='campanha'?'campanha':'conjunto de anúncio'}</h2>
+   <p>Histórico completo. Gasto agrupado por nome — se um nome tem mais de um id no Meta, aparece o selo.</p></div>
+   <div class="chk">${[['campanha','Campanha'],['conjunto','Conjunto']].map(([k,n])=>`<button data-cnivel="${k}" class="${nivel===k?'on':''}">${n}</button>`).join('')}</div></div>
+   <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>`;
+}
+
 function pgCohorts(){
  const ab=S.cab||'receita';
  const cb={}; D.cbase.forEach(r=>{const k=r.co; (cb[k]||(cb[k]={co:k,cli:0,idade:0,canais:{}}));
@@ -674,15 +736,14 @@ function pgJornadas(){
   {x:20,y:150,h:80,lb:'1ª compra avulsa',n:j.p1_avulsa?.n||0,c:'#111111'},
   {x:480,y:30,h:60,lb:'Sem compra',n:j.am_sem?.n||0,c:'#C9C9C4'},
   {x:480,y:110,h:60,lb:'Comprou',n:(j.am_avulso?.n||0)+(j.am_assin?.n||0)+(j.p1_avulsa?.n||0),c:'#111111'},
-  {x:480,y:190,h:50,lb:'Assinou',n:j.assin_ini?.n||0,c:'#F45E1A'},
-  {x:900,y:150,h:80,lb:'Renovou',n:j.rv1?.n||0,c:'#F45E1A'}
+  {x:480,y:190,h:50,lb:'Assinou',n:j.assin_ini_total?.n||0,c:'#F45E1A'}
  ];
  const mxn=Math.max(...nodes.map(n=>n.n))||1;
  const sk=nodes.map(n=>`<g><rect x="${n.x}" y="${n.y}" width="26" height="${Math.max(14,n.n/mxn*110)}" fill="${n.c}" rx="2"><title>${n.lb}: ${IN(n.n)}</title></rect>
   <text x="${n.x+34}" y="${n.y+14}" font-size="12" font-weight="600" fill="var(--pt)">${n.lb}</text>
   <text x="${n.x+34}" y="${n.y+29}" font-size="11" fill="var(--t3)">${IN(n.n)}</text></g>`).join('');
  const flows=[[0,2,j.am_sem?.n||0],[0,3,(j.am_avulso?.n||0)+(j.am_assin?.n||0)],[1,3,j.p1_avulsa?.n||0],
-  [3,4,j.p1_para_assin?.n||0],[4,5,j.rv1?.n||0]];
+  [3,4,j.p1_para_assin?.n||0]];
  const fl=flows.map(([a,b,n])=>{const A2=nodes[a],B2=nodes[b],w=Math.max(2,n/mxn*70);
   return `<path d="M ${A2.x+26} ${A2.y+18} C ${(A2.x+B2.x)/2} ${A2.y+18}, ${(A2.x+B2.x)/2} ${B2.y+18}, ${B2.x} ${B2.y+18}"
    stroke="${B2.c}" stroke-opacity=".26" stroke-width="${w}" fill="none"><title>${A2.lb} → ${B2.lb}: ${IN(n)}</title></path>`}).join('');
@@ -692,19 +753,26 @@ function pgJornadas(){
   <div class="pn"><div class="pnb">${jAm}</div></div></div>
  <div class="sc"><div class="sch"><div><h2>Jornada de compra única</h2></div></div>
   <div class="pn"><div class="pnb">${jAv}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Jornada de assinatura</h2></div></div>
-  <div class="pn"><div class="pnb">${jAs}</div></div>
-  ${(D.churn||[]).length?`<div class="sc" style="margin-top:18px"><div class="sch"><div><h2>Churn mensal medido nos pedidos</h2>
-   <p>Assinante ativo no mês que <b>nunca mais</b> voltou a ser cobrado. Quem faltou um mês e retornou
-   (${IN(j.voltou_apos_falha?.n||0)} casos) <b>não</b> conta como churn. A cadência é mensal em 93,8% dos intervalos,
-   então a janela de um mês é válida.</p></div></div>
-   <div class="pn"><div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
-   <th>Perdidos de vez</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
+ <div class="sc"><div class="sch"><div><h2>Assinatura — em revisão</h2>
+  <p>A curva de retenção de assinatura foi <b>retirada desta tela</b>. Os números que estavam aqui
+  estavam errados: contavam pedidos em vez de pessoas, e misturavam renovação do WooCommerce
+  (que assinou no sistema antigo) sem o início correspondente no denominador — o que fazia uma
+  etapa passar de 100%.</p></div></div>
+  ${(D.churn||[]).length?`<div class="pn"><div class="pnh"><h3>Churn mensal medido nos pedidos</h3>
+   <span class="pl r">divergente do Appstle</span></div>
+   <div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
+   <th>Pararam de pagar</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
    <td class="l fx">${MSL[+String(c.mes).slice(5,7)-1]}</td><td>${IN(+c.ativos)}</td>
    <td>${IN(+c.perdidos)}</td><td><b style="color:${+c.churn_pct>15?'var(--vm)':'var(--pt)'}">${PC(+c.churn_pct)}</b></td>
    </tr>`).join('')}</tbody><tfoot><tr><td class="l fx">Média</td><td></td><td></td>
-   <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div></div>`:''}
-  <div class="al w" style="margin-top:8px"><b>Pausa e cancelamento de assinatura não têm fonte.</b> A API do Appstle está bloqueada pelo plano — só a falha de cobrança do WooCommerce está medida. Sem isso, retenção por cobrança e motivo de cancelamento ficam fora.</div></div>`;
+   <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div>
+   <div class="al w" style="margin-top:8px"><b>Este número mede quem parou de pagar</b>, não quem clicou em cancelar —
+   inclui cartão vencido e cobrança que falhou. A conta do Appstle aponta ~8%; esta aponta
+   ${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}. Verifiquei que não é erro de método: a cadência é mensal em
+   93,8% dos intervalos e quem faltou um mês e voltou (${IN((D.jor.find(x=>x.e==='voltou_apos_falha')||{}).n||0)} casos) não conta.
+   A diferença provavelmente é lapso silencioso — e as ${IN((D.jor.find(x=>x.e==='falha')||{}).n||0)} falhas de cobrança do Woo
+   (${R0((D.jor.find(x=>x.e==='falha')||{}).v||0)}) são evidência direta disso. <b>Pendente de reconciliar com o Appstle.</b></div>`:''}
+  </div>
 }
 
 function pgDefinicoes(){
@@ -827,7 +895,7 @@ function render(){
   try{
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
-    S.pg==='cohorts'?pgCohorts():S.pg==='jornadas'?pgJornadas():
+    S.pg==='campanhas'?pgCampanhas():S.pg==='cohorts'?pgCohorts():S.pg==='jornadas'?pgJornadas():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>
@@ -846,6 +914,7 @@ function bind(el){
   const k=b.dataset.oc; S.oc[S.pg]=S.oc[S.pg]||{}; S.oc[S.pg][k]=!S.oc[S.pg][k];
   try{localStorage.setItem('ca_cols',JSON.stringify(S.oc))}catch(e){} render()});
  el.querySelectorAll('[data-gran]').forEach(b=>b.onclick=()=>{S.gran=b.dataset.gran;render()});
+ el.querySelectorAll('[data-cnivel]').forEach(b=>b.onclick=()=>{S.cnivel=b.dataset.cnivel;render()});
  el.querySelectorAll('[data-cab]').forEach(b=>b.onclick=()=>{S.cab=b.dataset.cab;render()});
  el.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>{S.rec=b.dataset.rec;url();render()});
  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.pg=b.dataset.go;url();render()});
