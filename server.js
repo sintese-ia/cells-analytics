@@ -17,6 +17,14 @@ const pool = new Pool({
   ssl: false, max: 4, idleTimeoutMillis: 30000, statement_timeout: 120000,
 });
 
+// jit=off. As views sao unions complexos com jsonb, entao o planner estima custo absurdo
+// (762.851 na query de jornadas) e cruza o jit_above_cost padrao de 100.000. O Postgres entao
+// COMPILA a query — e o dado real e minusculo (2.128 pedidos), logo a compilacao e puro
+// desperdicio. Medido no EXPLAIN ANALYZE: Optimization 10,7s + Emission 8,0s = 19,2s dos 22,5s
+// eram JIT, nao processamento. Com jit=off a carga completa cai de 33,3s para 13,8s e a query
+// de jornadas de 22,9s para 4,7s, com contagem de linhas identica nas 7 queries testadas.
+pool.on('connect', c => c.query('SET jit = off').catch(e => console.error('[jit]', e.message)));
+
 const TPL = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8');
 let cache = { at: 0, json: null, erro: null };
 
