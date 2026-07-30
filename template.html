@@ -672,7 +672,7 @@ function pgCohorts(){
   return 0})).filter(v=>v>0);
  const mxv=Math.max(...vals,1);
  const fmtC=v=>ab==='recompra'?PC(v,0):ab==='ltv'?R0(v):R0(v);
- const hm=`<div class="tw"><table class="hm"><thead><tr><th class="l fx">Cohort</th><th>Clientes</th>${MN.map(n=>`<th>Mês ${n}</th>`).join('')}</tr></thead><tbody>${
+ const hm=!cos.length?'<div class="emp">Nenhum cohort para os filtros atuais.</div>':`<div class="tw"><table class="hm"><thead><tr><th class="l fx">Cohort</th><th>Clientes</th>${MN.map(n=>`<th>Mês ${n}</th>`).join('')}</tr></thead><tbody>${
   cos.map(c=>{const b=base[c]||0;
    return `<tr><td class="l fx">${MSL[+c.slice(5,7)-1]}${b&&(cb[c]?.idade<120)?' <span class="pl i">jovem</span>':''}</td>
    <td style="font-weight:650">${IN(b)}</td>${MN.map(n=>{
@@ -696,15 +696,15 @@ function pgCohorts(){
   {k:'cu',t:'Custo por amostra',f:()=>R$(CUSTO+CACAM),raw:()=>CUSTO+CACAM},
   {k:'cc',t:'Custo por convertido',f:r=>{const v=dv((CUSTO+CACAM)*(+r.amostras),+r.conv);return v==null?'<span class="na">—</span>':R$(v)},raw:r=>dv((CUSTO+CACAM)*(+r.amostras),+r.conv)??1e9,tf:()=>R$(dv((CUSTO+CACAM)*totAm,totCv))}
  ],amM,{});
- const sel=cos[cos.length-1];
- const selB=base[sel]||0, selAcc=acc[sel+'|6']||acc[sel+'|3']||0;
+ const sel=cos.length?cos[cos.length-1]:null;
+ const selB=sel?(base[sel]||0):0, selAcc=sel?(acc[sel+'|6']||acc[sel+'|3']||0):0;
  return `<div class="sc"><div class="sch"><div><h2>Cohorts por mês da primeira compra paga</h2>
   <p>O cohort é definido pelo mês da primeira compra, então <b>o seletor de período não se aplica</b> —
   canal, grupo e tipo da primeira compra sim. Comparar cohort de dois meses com cohort de nove meses é a armadilha clássica — a etiqueta <span class="pl i">jovem</span> marca quem tem menos de 120 dias. Amostra não abre cohort de cliente pagante: tem visão própria abaixo.</p></div>
   <div class="chk">${[['receita','Receita acumulada'],['ltv','LTV por cliente'],['recompra','Recompra %']].map(([k,n])=>`<button data-cab="${k}" class="${ab===k?'on':''}">${n}</button>`).join('')}</div></div>
   <div class="pn">${hm}</div>
   ${filtCanal?`<div class="al o" style="margin-top:8px">Filtrado por canal de aquisição <b>${filtCanal}</b>.</div>`:''}</div>
- <div class="sc"><div class="sch"><div><h2>Cohort selecionado — ${MSL[+sel.slice(5,7)-1]}</h2></div></div>
+ ${sel?`<div class="sc"><div class="sch"><div><h2>Cohort selecionado — ${MSL[+sel.slice(5,7)-1]}</h2></div></div>
   <div class="gr g6">
    <div class="cd"><div class="k">Clientes adquiridos</div><div class="v">${IN(selB)}</div></div>
    <div class="cd"><div class="k">Receita acumulada</div><div class="v">${R0(selAcc)}</div></div>
@@ -712,7 +712,7 @@ function pgCohorts(){
    <div class="cd"><div class="k">Margem a 60%</div><div class="v">${R$(dv(selAcc,selB)*0.6)}</div></div>
    <div class="cd"><div class="k">Idade do cohort</div><div class="v">${IN(cb[sel]?.idade)}d</div></div>
    <div class="cd"><div class="k">LTV/CAC</div><div class="v na" style="font-size:15px">precisa CAC do mês</div><div class="c f">gasto do mês ÷ clientes do cohort</div></div>
-  </div></div>
+  </div></div>`:'<div class="al w">Nenhum cohort para os filtros atuais.</div>'}
  <div class="sc"><div class="sch"><div><h2>Cohort de amostras</h2>
   <p>Baseado no mês em que a pessoa recebeu a amostra. Amostra não é cliente pagante — o que importa é quanto dela converte.</p></div></div>
   <div class="pn">${TA.html}</div>
@@ -769,19 +769,6 @@ function pgJornadas(){
   ${F('Sem recompra',{n:j.p1_sem_recompra?.n||0,cor:'g'},j.p1_avulsa?.n)}
   ${F('→ segunda compra avulsa',{n:j.p1_2a_avulsa?.n||0},j.p1_avulsa?.n)}
   ${F('→ início de assinatura',{n:j.p1_para_assin?.n||0,cor:'lj'},j.p1_avulsa?.n)}</div>`;
- const b1=j.assin_base1?.n||0,b2=j.assin_base2?.n||0,b3=j.assin_base3?.n||0;
- const jAs=`<div class="fn">
-  ${F('Assinaturas iniciadas (total)',{n:j.assin_ini_total?.n||0,cor:'lj'},null)}
-  ${F(`1ª renovação · base de ${IN(b1)} com +35 dias`,{n:j.assin_ren1?.n||0,cor:'lj'},b1)}
-  ${F(`2ª renovação · base de ${IN(b2)} com +65 dias`,{n:j.assin_ren2?.n||0,cor:'lj'},b2)}
-  ${F(`3ª renovação · base de ${IN(b3)} com +95 dias`,{n:j.assin_ren3?.n||0,cor:'lj'},b3)}
-  ${F('Falha de cobrança (Woo)',{n:j.falha?.n||0,cor:'g'},null)}</div>
-  <div class="al w" style="margin-top:9px"><b>Cada etapa tem base própria.</b> Quem assinou há 10 dias
-  não podia ter chegado à 2ª renovação — contá-lo no denominador afundaria a curva sem motivo.
-  Por isso a 1ª renovação só considera quem tem mais de 35 dias, a 2ª mais de 65, a 3ª mais de 95.</div>
-  <div class="al c" style="margin-top:7px"><b>${IN(j.woo_sem_inicio?.n||0)} assinantes do WooCommerce ficam fora desta curva.</b>
-  Eles assinaram no sistema antigo, então o início não existe na nossa base — entrariam como renovação
-  sem denominador e quebrariam a conta. É o que fazia a etapa "4ª ou mais" passar de 100%.</div>
  // sankey simplificado: amostra -> compra -> assinatura -> renovacao
  const W=1000,H=250;
  const nodes=[
@@ -807,25 +794,24 @@ function pgJornadas(){
  <div class="sc"><div class="sch"><div><h2>Jornada de compra única</h2></div></div>
   <div class="pn"><div class="pnb">${jAv}</div></div></div>
  <div class="sc"><div class="sch"><div><h2>Assinatura — em revisão</h2>
-  <p>A curva de retenção de assinatura foi <b>retirada desta tela</b>. Os números que estavam aqui
-  estavam errados: contavam pedidos em vez de pessoas, e misturavam renovação do WooCommerce
-  (que assinou no sistema antigo) sem o início correspondente no denominador — o que fazia uma
-  etapa passar de 100%.</p></div></div>
-  ${(D.churn||[]).length?`<div class="pn"><div class="pnh"><h3>Churn mensal medido nos pedidos</h3>
-   <span class="pl r">divergente do Appstle</span></div>
-   <div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
-   <th>Pararam de pagar</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
-   <td class="l fx">${MSL[+String(c.mes).slice(5,7)-1]}</td><td>${IN(+c.ativos)}</td>
-   <td>${IN(+c.perdidos)}</td><td><b style="color:${+c.churn_pct>15?'var(--vm)':'var(--pt)'}">${PC(+c.churn_pct)}</b></td>
-   </tr>`).join('')}</tbody><tfoot><tr><td class="l fx">Média</td><td></td><td></td>
-   <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div>
-   <div class="al w" style="margin-top:8px"><b>Este número mede quem parou de pagar</b>, não quem clicou em cancelar —
-   inclui cartão vencido e cobrança que falhou. A conta do Appstle aponta ~8%; esta aponta
-   ${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}. Verifiquei que não é erro de método: a cadência é mensal em
-   93,8% dos intervalos e quem faltou um mês e voltou (${IN((D.jor.find(x=>x.e==='voltou_apos_falha')||{}).n||0)} casos) não conta.
-   A diferença provavelmente é lapso silencioso — e as ${IN((D.jor.find(x=>x.e==='falha')||{}).n||0)} falhas de cobrança do Woo
-   (${R0((D.jor.find(x=>x.e==='falha')||{}).v||0)}) são evidência direta disso. <b>Pendente de reconciliar com o Appstle.</b></div>`:''}
-  </div>
+    <p>A curva de retenção de assinatura foi <b>retirada desta tela</b>. Os números que estavam aqui
+    contavam pedidos em vez de pessoas e misturavam renovação do WooCommerce, que assinou no sistema
+    antigo, sem o início correspondente no denominador — era isso que fazia uma etapa passar de 100%.</p></div></div>
+    ${(D.churn||[]).length ? `<div class="pn"><div class="pnh"><h3>Churn mensal medido nos pedidos</h3>
+      <span class="pl r">divergente do Appstle</span></div>
+      <div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
+      <th>Pararam de pagar</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
+      <td class="l fx">${MSL[+String(c.mes).slice(5,7)-1]}</td><td>${IN(+c.ativos)}</td>
+      <td>${IN(+c.perdidos)}</td><td><b style="color:${+c.churn_pct>15?'var(--vm)':'var(--pt)'}">${PC(+c.churn_pct)}</b></td>
+      </tr>`).join('')}</tbody><tfoot><tr><td class="l fx">Média</td><td></td><td></td>
+      <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div>
+      <div class="al w" style="margin-top:8px"><b>Este número mede quem parou de pagar</b>, não quem clicou em cancelar —
+      inclui cartão vencido e cobrança que falhou. O Appstle aponta ~8%; esta conta aponta
+      ${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}. Não é erro de método: a cadência é mensal em 93,8%
+      dos intervalos e quem faltou um mês e voltou não conta. A diferença provavelmente é lapso silencioso, e as
+      ${IN((D.jor.find(x=>x.e==='falha')||{}).n||0)} falhas de cobrança do Woo são evidência direta.
+      <b>Pendente de reconciliar com o Appstle.</b></div>` : ''}
+   </div>`;
 }
 
 function pgDefinicoes(){
