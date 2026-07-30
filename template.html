@@ -654,13 +654,19 @@ function pgJornadas(){
   ${F('Sem recompra',{n:j.p1_sem_recompra?.n||0,cor:'g'},j.p1_avulsa?.n)}
   ${F('→ segunda compra avulsa',{n:j.p1_2a_avulsa?.n||0},j.p1_avulsa?.n)}
   ${F('→ início de assinatura',{n:j.p1_para_assin?.n||0,cor:'lj'},j.p1_avulsa?.n)}</div>`;
+ const b1=j.assin_base1?.n||0,b2=j.assin_base2?.n||0,b3=j.assin_base3?.n||0;
  const jAs=`<div class="fn">
-  ${F('Assinaturas iniciadas',{n:j.assin_ini?.n||0,cor:'lj'},null)}
-  ${F('1ª renovação',{n:j.rv1?.n||0,cor:'lj'},j.assin_ini?.n)}
-  ${F('2ª renovação',{n:j.rv2?.n||0,cor:'lj'},j.assin_ini?.n)}
-  ${F('3ª renovação',{n:j.rv3?.n||0,cor:'lj'},j.assin_ini?.n)}
-  ${F('4ª ou mais',{n:j.rv4?.n||0,cor:'lj'},j.assin_ini?.n)}
-  ${F('Falha de cobrança (Woo)',{n:j.falha?.n||0,cor:'g'},null)}</div>`;
+  ${F('Assinaturas iniciadas (total)',{n:j.assin_ini_total?.n||0,cor:'lj'},null)}
+  ${F(`1ª renovação · base de ${IN(b1)} com +35 dias`,{n:j.assin_ren1?.n||0,cor:'lj'},b1)}
+  ${F(`2ª renovação · base de ${IN(b2)} com +65 dias`,{n:j.assin_ren2?.n||0,cor:'lj'},b2)}
+  ${F(`3ª renovação · base de ${IN(b3)} com +95 dias`,{n:j.assin_ren3?.n||0,cor:'lj'},b3)}
+  ${F('Falha de cobrança (Woo)',{n:j.falha?.n||0,cor:'g'},null)}</div>
+  <div class="al w" style="margin-top:9px"><b>Cada etapa tem base própria.</b> Quem assinou há 10 dias
+  não podia ter chegado à 2ª renovação — contá-lo no denominador afundaria a curva sem motivo.
+  Por isso a 1ª renovação só considera quem tem mais de 35 dias, a 2ª mais de 65, a 3ª mais de 95.</div>
+  <div class="al c" style="margin-top:7px"><b>${IN(j.woo_sem_inicio?.n||0)} assinantes do WooCommerce ficam fora desta curva.</b>
+  Eles assinaram no sistema antigo, então o início não existe na nossa base — entrariam como renovação
+  sem denominador e quebrariam a conta. É o que fazia a etapa "4ª ou mais" passar de 100%.</div>
  // sankey simplificado: amostra -> compra -> assinatura -> renovacao
  const W=1000,H=250;
  const nodes=[
@@ -688,6 +694,16 @@ function pgJornadas(){
   <div class="pn"><div class="pnb">${jAv}</div></div></div>
  <div class="sc"><div class="sch"><div><h2>Jornada de assinatura</h2></div></div>
   <div class="pn"><div class="pnb">${jAs}</div></div>
+  ${(D.churn||[]).length?`<div class="sc" style="margin-top:18px"><div class="sch"><div><h2>Churn mensal medido nos pedidos</h2>
+   <p>Assinante ativo no mês que <b>nunca mais</b> voltou a ser cobrado. Quem faltou um mês e retornou
+   (${IN(j.voltou_apos_falha?.n||0)} casos) <b>não</b> conta como churn. A cadência é mensal em 93,8% dos intervalos,
+   então a janela de um mês é válida.</p></div></div>
+   <div class="pn"><div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
+   <th>Perdidos de vez</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
+   <td class="l fx">${MSL[+String(c.mes).slice(5,7)-1]}</td><td>${IN(+c.ativos)}</td>
+   <td>${IN(+c.perdidos)}</td><td><b style="color:${+c.churn_pct>15?'var(--vm)':'var(--pt)'}">${PC(+c.churn_pct)}</b></td>
+   </tr>`).join('')}</tbody><tfoot><tr><td class="l fx">Média</td><td></td><td></td>
+   <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div></div>`:''}
   <div class="al w" style="margin-top:8px"><b>Pausa e cancelamento de assinatura não têm fonte.</b> A API do Appstle está bloqueada pelo plano — só a falha de cobrança do WooCommerce está medida. Sem isso, retenção por cobrança e motivo de cancelamento ficam fora.</div></div>`;
 }
 
