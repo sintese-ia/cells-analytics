@@ -1,0 +1,64 @@
+name: gate
+
+# Em 30/07/2026 o painel foi ao ar com SyntaxError: um bloco removido do template deixou
+# um template literal aberto, e o app subiu servindo uma pagina em branco. Este gate roda
+# antes de qualquer merge para que aquilo nao repita.
+#
+# LIMITE CONHECIDO: o Postgres so responde em bancodados:5432 na rede interna do Easypanel.
+# O GitHub Actions nao o alcanca, entao aqui o smoke roda em modo --offline (todas as views
+# com zero linhas). Isso cobre sintaxe e resiliencia a conjunto vazio, que sao as duas falhas
+# que ja aconteceram. O smoke com dado real e o `node smoke.js` sem --offline, rodado na maquina
+# que tem tunel para o banco, e continua sendo obrigatorio antes de mexer em numero.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: instalar dependencias
+        run: npm ci --omit=dev || npm install --omit=dev
+
+      - name: sintaxe dos modulos node
+        run: |
+          for f in server.js queries.js smoke.js; do
+            node --check "$f" && echo "ok  $f"
+          done
+
+      - name: gate — sintaxe do template + 9 telas x 16 cenarios com views vazias
+        run: node smoke.js --offline
+
+      - name: o servidor sobe e responde na porta
+        # Sem DATABASE_URL o carregamento falha de proposito: o que se verifica aqui e que o
+        # processo NAO morre e que a tela de senha continua sendo servida (modo degradado).
+        run: |
+          SENHA=ci node server.js & SRV=$!
+          for i in $(seq 1 25); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/; then break; fi
+            sleep 1
+          done
+          CODE=$(curl -s -o /tmp/resp.html -w '%{http_code}' http://127.0.0.1:3000/)
+          echo "HTTP $CODE"
+          grep -qi 'senha\|password' /tmp/resp.html && echo 'ok  tela de senha servida'
+          kill $SRV
+          test "$CODE" = "200"
+
+      - name: o HTML nao pode sair sem cookie de sessao
+        run: |
+          SENHA=ci node server.js & SRV=$!
+          sleep 3
+          if curl -s http://127.0.0.1:3000/ | grep -q 'Cells Analytics.*Cohorts'; then
+            echo 'FALHA: o painel foi servido sem autenticacao'; kill $SRV; exit 1
+          fi
+          echo 'ok  painel nao vaza sem cookie'
+          kill $SRV

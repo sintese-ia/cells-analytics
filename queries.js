@@ -92,4 +92,19 @@ from core.vw_campanha_dia
 where spend>0 or ped_total>0`,
   sess: `select dia, canal, canal_aq, categoria, sessoes, dias, primeira_sessao, pedidos, receita
 from core.vw_sessoes_ate_compra`,
+  // PAYBACK REAL. cac_aprox = gasto do mes / clientes cuja 1a compra PAGA foi atribuida ao canal
+  // naquele mes. Nao usa is_new_customer (aquele campo conta quem so tinha amostra e inflou
+  // a contagem 156 vs 53 em julho, produzindo um CAC 5x otimista).
+  payback: `select mes, canal, clientes, idade_dias, spend, cac_aprox,
+ ltv_30, ltv_90, ltv_180, margem_180_por_cliente, margem_sobre_cac_180, payback_meses
+from core.vw_payback_coorte order by mes, canal`,
+  // Custo real por amostra: gasto das campanhas que ENTREGAM amostra (ped_amostra>aquisicao)
+  // dividido pelas amostras que elas entregaram. Substitui o R$ 9,32 hardcoded que era falso.
+  amcusto: `with t as (select to_char(dia,'YYYY-MM') mes, campanha, sum(spend) sp,
+   sum(coalesce(ped_amostra,0)) am, sum(coalesce(pedidos_aquisicao,0)) aq
+  from core.vw_criativo_dia group by 1,2)
+select mes, round((sum(sp) filter (where am>aq))::numeric,2) spend_am,
+ coalesce(sum(am) filter (where am>aq),0)::int am_atrib,
+ round((sum(sp) filter (where am>aq)/nullif(sum(am) filter (where am>aq),0))::numeric,2) custo_por_amostra
+from t group by 1 order by 1`,
 };

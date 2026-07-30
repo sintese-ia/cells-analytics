@@ -408,6 +408,18 @@ function pgResumo(){
   al.push(['o',`<b>${mais.canal}</b> trouxe mais clientes novos (${IN(mais.p_novo_avulso+mais.p_novo_assinatura)}), mas <b>${cans[0].c}</b> tem a maior taxa de assinatura direta (${PC(cans[0].tx*100)}).`])}
  const mpr=M.mpr.g(A);
  if(mpr!=null)al.push([mpr>=1?'o':'w',`Cada real gasto devolveu <b>${RT(mpr)}</b> de margem de contribuição. ${mpr>=1?'O período se paga na primeira compra.':'O retorno depende do valor acumulado — veja Cohorts.'}`]);
+ // PAYBACK NO RESUMO. Fica em Cohorts com detalhe, mas e o numero que decide escalar midia:
+ // enterrado numa aba interna ninguem ve. Consolida so os cohorts que TEM custo registrado.
+ (()=>{const pb=(D.payback||[]).filter(r=>r.cac_aprox!=null&&+r.cac_aprox>0);
+  if(!pb.length)return;
+  const sp=pb.reduce((a,r)=>a+ +r.spend,0), cl=pb.reduce((a,r)=>a+ +r.clientes,0);
+  const mg=pb.reduce((a,r)=>a+(+r.margem_180_por_cliente||0)*(+r.clientes),0);
+  const rz=dv(mg,sp); if(rz==null)return;
+  const canais=[...new Set(pb.map(r=>r.canal))];
+  al.push([rz>=1?'o':'c',`<b>Payback em 180 dias: ${rz.toFixed(2).replace('.',',')}x.</b>
+   ${R0(sp)} de mídia (${canais.join(', ')}) trouxeram ${IN(cl)} clientes pagantes, que devolveram
+   ${R$(dv(mg,cl))} de margem por cliente contra um CAC de ${R$(dv(sp,cl))}.
+   ${rz<1?`<b>Não se paga</b> — e o LTV não cresce depois: quem passou de 180 dias tem em média 1,67 pedidos e 1,5 mês de vida. Detalhe por cohort em Cohorts.`:'Detalhe por cohort em Cohorts.'}`])})();
  if(A.inf>0)al.push(['w',`<b>${IN(A.inf)}</b> pedidos têm origem <b>inferida</b> (herdada da aquisição), não medida. Contam em faturamento, mas nunca em ROAS de aquisição.`]);
  const sh=D.saude.map(p=>`<div class="al ${p.status==='OK'?'o':p.status==='ATRASADO'?'w':'c'}"><div><b>${p.fonte}</b> <span class="pl g">${p.tipo}</span><br><span style="color:var(--t2)">${p.status} · idade ${nf(+p.idade_horas,1)}h · SLA ${p.sla_horas}h · ${IN(+p.linhas)} linhas</span></div></div>`).join('');
  return `<div class="sc"><div class="gr g6">${r1}</div></div>
@@ -564,7 +576,9 @@ function pgMensal(){
     return b?dlt(a,b):'<span class="na">—</span>'},raw:r=>r[meses[meses.length-1]]},
   {k:'mm',t:'Média 3 meses',f:r=>{const l=meses.slice(-3).map(x=>r[x]);return R0(l.reduce((a,b)=>a+b,0)/3)},raw:r=>0}];
  const T=TB(cols,piv,null);
- const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+CAT[S.cat].n)].filter(Boolean).join(' · ');
+ // CAT e um mapa fixo das 6 categorias. Se a view emitir uma 7a, o dropdown a oferece e o
+ // lookup direto quebrava a tela inteira — cai no proprio codigo da categoria em vez de estourar.
+ const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+(CAT[S.cat]?.n||S.cat))].filter(Boolean).join(' · ');
  return `<div class="al o">Esta tela mostra <b>o ano inteiro por desenho</b> — o seletor de período não se aplica aqui.
   Canal, grupo e tipo de cliente <b>sim</b>${fAtivo?`: filtrando por ${fAtivo}`:''}.</div>
   <div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês. A linha é a média móvel de três meses.</p></div>
@@ -681,11 +695,17 @@ function pgCohorts(){
     if(!has&&n>0)return '<td class="na">—</td>';
     const int2=Math.min(.62,v/mxv*.62);
     return `<td style="background:rgba(244,94,26,${int2})">${fmtC(v)}</td>`}).join('')}</tr>`}).join('')}</tbody></table></div>`;
- // amostras
+ // amostras. CUSTO POR AMOSTRA VEM DO BANCO (D.amcusto), nunca hardcoded:
+ // o valor antigo (R$ 9,32) saiu do bug do is_new_customer e era ~14x menor que o real.
  const amM=D.am_mes, amD=D.am_dias[0]||{};
- const CUSTO=12,TX=.127,PRECO=37.9,CACAM=9.32;
- const folga=PRECO-CUSTO-PRECO*TX-CACAM;
+ const CUSTO=12,TX=.127,PRECO=37.9;
+ const CPA={}; (D.amcusto||[]).forEach(r=>{if(r.custo_por_amostra!=null)CPA[r.mes]=+r.custo_por_amostra});
+ const cpaMes=m=>CPA[m]??null;
  const totAm=amM.reduce((a,r)=>a+ +r.amostras,0), totCv=amM.reduce((a,r)=>a+ +r.conv,0);
+ const totSpAm=(D.amcusto||[]).reduce((a,r)=>a+(+r.spend_am||0),0);
+ const totAmAtr=(D.amcusto||[]).reduce((a,r)=>a+(+r.am_atrib||0),0);
+ const cpaGeral=dv(totSpAm,totAmAtr);
+ const folga=cpaGeral==null?null:PRECO-CUSTO-PRECO*TX-cpaGeral;
  const TA=TB([
   {k:'m',t:'Mês da amostra',l:1,fx:1,f:r=>MSL[+String(r.mes).slice(5,7)-1],raw:r=>r.mes},
   {k:'a',t:'Amostras distribuídas',f:r=>IN(+r.amostras),raw:r=>+r.amostras,tf:t=>IN(totAm)},
@@ -693,9 +713,33 @@ function pgCohorts(){
   {k:'ca',t:'Convert. em assinatura',f:r=>IN(+r.conv_assin),raw:r=>+r.conv_assin},
   {k:'t',t:'Taxa de conversão',f:r=>{const v=dv(+r.conv,+r.amostras);
     return v==null?'—':`<b style="color:${v>=.15?'var(--vd)':'var(--pt)'}">${PC(v*100)}</b>`},raw:r=>dv(+r.conv,+r.amostras)??-1,tf:()=>PC(dv(totCv,totAm)*100)},
-  {k:'cu',t:'Custo por amostra',f:()=>R$(CUSTO+CACAM),raw:()=>CUSTO+CACAM},
-  {k:'cc',t:'Custo por convertido',f:r=>{const v=dv((CUSTO+CACAM)*(+r.amostras),+r.conv);return v==null?'<span class="na">—</span>':R$(v)},raw:r=>dv((CUSTO+CACAM)*(+r.amostras),+r.conv)??1e9,tf:()=>R$(dv((CUSTO+CACAM)*totAm,totCv))}
+  {k:'cu',t:'Mídia por amostra',f:r=>{const c=cpaMes(r.mes);return c==null?'<span class="na">sem gasto atrib.</span>':R$(c)},raw:r=>cpaMes(r.mes)??-1,tf:()=>cpaGeral==null?'—':R$(cpaGeral)},
+  {k:'cu2',t:'Custo total da amostra',f:r=>{const c=cpaMes(r.mes);return c==null?'<span class="na">—</span>':R$(CUSTO+PRECO*TX+c)},raw:r=>{const c=cpaMes(r.mes);return c==null?-1:CUSTO+PRECO*TX+c}},
+  {k:'cc',t:'Custo por convertido',f:r=>{const c=cpaMes(r.mes);const v=c==null?null:dv((CUSTO+PRECO*TX+c)*(+r.amostras),+r.conv);
+    return v==null?'<span class="na">—</span>':`<b style="color:var(--pt)">${R$(v)}</b>`},
+   raw:r=>{const c=cpaMes(r.mes);return c==null?1e9:(dv((CUSTO+PRECO*TX+c)*(+r.amostras),+r.conv)??1e9)}}
  ],amM,{});
+ // PAYBACK: CAC real do mes contra margem de contribuicao acumulada em 180 dias.
+ const pbAll=(D.payback||[]).filter(r=>!filtCanal||r.canal===filtCanal)
+   .filter(r=>!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo);
+ const pbCom=pbAll.filter(r=>r.cac_aprox!=null&&+r.cac_aprox>0);
+ const pbSp=pbCom.reduce((a,r)=>a+ +r.spend,0), pbCli=pbCom.reduce((a,r)=>a+ +r.clientes,0);
+ const pbMg=pbCom.reduce((a,r)=>a+ (+r.margem_180_por_cliente||0)*(+r.clientes),0);
+ const pbRaz=dv(pbMg,pbSp);
+ const TP=TB([
+  {k:'m',t:'Cohort',l:1,fx:1,f:r=>`${MSL[+String(r.mes).slice(5,7)-1]} <span class="c f">${String(r.mes).slice(0,4)}</span>`,raw:r=>r.mes},
+  {k:'ca',t:'Canal',l:1,f:r=>r.canal,raw:r=>r.canal},
+  {k:'cl',t:'Clientes pagantes',f:r=>IN(+r.clientes),raw:r=>+r.clientes,tf:()=>IN(pbCli)},
+  {k:'id',t:'Idade',f:r=>`${IN(+r.idade_dias)}d${+r.idade_dias<180?' <span class="pl i">imaturo</span>':''}`,raw:r=>+r.idade_dias},
+  {k:'sp',t:'Mídia no mês',f:r=>r.spend==null?'<span class="na">—</span>':R0(+r.spend),raw:r=>+r.spend||-1,tf:()=>R0(pbSp)},
+  {k:'cc',t:'CAC',f:r=>r.cac_aprox==null?'<span class="na">sem custo</span>':R$(+r.cac_aprox),raw:r=>+r.cac_aprox??-1,tf:()=>R$(dv(pbSp,pbCli))},
+  {k:'l1',t:'LTV 180d',f:r=>R$(+r.ltv_180),raw:r=>+r.ltv_180},
+  {k:'mg',t:'Margem 180d/cliente',f:r=>R$(+r.margem_180_por_cliente),raw:r=>+r.margem_180_por_cliente,tf:()=>R$(dv(pbMg,pbCli))},
+  {k:'rz',t:'Margem ÷ CAC',f:r=>{const v=r.margem_sobre_cac_180;
+    return v==null?'<span class="na">—</span>':`<b style="color:${+v>=1?'var(--vd)':'var(--pt)'}">${(+v).toFixed(2).replace('.',',')}x</b>`},
+   raw:r=>r.margem_sobre_cac_180==null?-1:+r.margem_sobre_cac_180,
+   tf:()=>pbRaz==null?'—':`<b style="color:${pbRaz>=1?'var(--vd)':'var(--pt)'}">${pbRaz.toFixed(2).replace('.',',')}x</b>`}
+ ],pbAll,{});
  const sel=cos.length?cos[cos.length-1]:null;
  const selB=sel?(base[sel]||0):0, selAcc=sel?(acc[sel+'|6']||acc[sel+'|3']||0):0;
  return `<div class="sc"><div class="sch"><div><h2>Cohorts por mês da primeira compra paga</h2>
@@ -711,13 +755,25 @@ function pgCohorts(){
    <div class="cd"><div class="k">LTV por cliente</div><div class="v">${R$(dv(selAcc,selB))}</div></div>
    <div class="cd"><div class="k">Margem a 60%</div><div class="v">${R$(dv(selAcc,selB)*0.6)}</div></div>
    <div class="cd"><div class="k">Idade do cohort</div><div class="v">${IN(cb[sel]?.idade)}d</div></div>
-   <div class="cd"><div class="k">LTV/CAC</div><div class="v na" style="font-size:15px">precisa CAC do mês</div><div class="c f">gasto do mês ÷ clientes do cohort</div></div>
+   ${(()=>{const p=pbAll.find(r=>r.mes&&String(r.mes).slice(0,7)===sel&&(!filtCanal||r.canal===filtCanal));
+     const v=p&&p.margem_sobre_cac_180!=null?+p.margem_sobre_cac_180:null;
+     return `<div class="cd"><div class="k">Margem ÷ CAC (180d)</div><div class="v" style="${v!=null?`color:${v>=1?'var(--vd)':'var(--pt)'}`:''}">${v!=null?v.toFixed(2).replace('.',',')+'x':'<span class="na" style="font-size:15px">sem custo do canal</span>'}</div><div class="c f">${v!=null?(v>=1?'se paga em 180 dias':'não se paga em 180 dias'):'canal sem gasto registrado'}</div></div>`})()}
   </div></div>`:'<div class="al w">Nenhum cohort para os filtros atuais.</div>'}
+ <div class="sc"><div class="sch"><div><h2>Payback: o cohort devolve o que custou?</h2>
+  <p>A pergunta que decide se pode escalar mídia. <b>CAC</b> = mídia do mês ÷ clientes cuja <b>primeira compra paga</b> foi atribuída ao canal naquele mês — amostra não conta como cliente. <b>Margem ÷ CAC</b> abaixo de 1,00 significa que o cohort ainda não devolveu a mídia que custou.</p></div></div>
+  <div class="pn">${pbAll.length?TP.html:'<div class="emp">Nenhum cohort com custo para os filtros atuais.</div>'}</div>
+  ${pbRaz!=null?`<div class="al ${pbRaz>=1?'o':'c'}" style="margin-top:8px"><b>${pbRaz>=1?'Paga.':'Não paga.'}</b>
+   ${R0(pbSp)} de mídia geraram ${IN(pbCli)} clientes pagantes, que devolveram ${R$(dv(pbMg,pbCli))} de margem de contribuição por cliente em 180 dias contra um CAC de ${R$(dv(pbSp,pbCli))} — <b>${pbRaz.toFixed(2).replace('.',',')}x</b>.
+   ${pbRaz<1?'E não há cauda longa para resgatar: entre os clientes com mais de 180 dias, a média é de 1,67 pedidos e 1,5 mês de vida, então 180 dias já é praticamente o ciclo inteiro.':''}</div>`:''}
+  <div class="al w" style="margin-top:8px"><b>Duas ressalvas.</b> (1) O <b>Google Ads não tem custo no banco</b> apesar de ser a 2ª maior receita — as linhas dele aparecem como "sem custo" e o quadro consolidado pode ser pior que o mostrado. (2) Margem aqui é <b>contribuição</b> (receita − CMV − taxas): não inclui custo fixo, salário nem frete real. Cohort marcado <span class="pl i">imaturo</span> tem menos de 180 dias e a janela ainda não fechou.</div></div>
  <div class="sc"><div class="sch"><div><h2>Cohort de amostras</h2>
-  <p>Baseado no mês em que a pessoa recebeu a amostra. Amostra não é cliente pagante — o que importa é quanto dela converte.</p></div></div>
+  <p>Baseado no mês em que a pessoa recebeu a amostra. Amostra não é cliente pagante — o que importa é quanto dela converte, e a que custo.</p></div></div>
   <div class="pn">${TA.html}</div>
-  <div class="al w" style="margin-top:8px">Tempo até a primeira compra: média de <b>${IN(+amD.media)} dias</b>, mediana de <b>${IN(+amD.mediana)} dias</b> (n=${IN(+amD.n)}). Cohort de julho tem dias de idade — só março está maduro.</div>
-  <div class="al ${folga>0?'o':'c'}"><b>Unidade econômica da amostra:</b> preço ${R$(PRECO)} − CMV ${R$(CUSTO)} − taxas ${R$(PRECO*TX)} − CAC ${R$(CACAM)} = <b>folga de ${R$(folga)}</b>. O frete observado no Bling vai de R$ 7,45 a R$ 14,74 — <b>a folga e o frete se sobrepõem</b> e o frete real não está no banco. Escalar amostra sem esse número é chute.</div></div>`;
+  <div class="al w" style="margin-top:8px">Tempo até a primeira compra: média de <b>${IN(+amD.media)} dias</b>, mediana de <b>${IN(+amD.mediana)} dias</b> (n=${IN(+amD.n)}). Só o cohort de <b>março</b> está maduro — e ele já havia convergido no dia 90.</div>
+  ${folga!=null?`<div class="al ${folga>0?'o':'c'}"><b>Unidade econômica da amostra:</b> preço ${R$(PRECO)} − CMV ${R$(CUSTO)} − taxas ${R$(PRECO*TX)} − mídia ${R$(cpaGeral)} = <b>${folga>0?'folga':'prejuízo'} de ${R$(Math.abs(folga))}</b> por amostra${folga<=0?', antes do frete':''}.
+   ${totCv&&totAm?`Como só <b>${PC(dv(totCv,totAm)*100)}</b> converte, cada cliente pagante conquistado por essa rota custa <b>${R$(dv((CUSTO+PRECO*TX+cpaGeral)*totAm,totCv))}</b>.`:''}
+   O frete observado no Bling vai de R$ 7,45 a R$ 14,74 e <b>não está no banco</b>.</div>`:''}
+  <div class="al w"><b>Não existe conversão escondida no clube do Woo:</b> dos 150 compradores de amostra, 1 aparece no WooCommerce e 0 entraram depois da amostra. A rota de saída é o Shopify.</div></div>`;
 }
 
 function pgJornadas(){
@@ -829,7 +885,9 @@ function pgDefinicoes(){
   ['Receita por cliente','Faturamento ÷ clientes únicos.','receita ÷ clientes','idem',''],
   ['Margem de contribuição','Faturamento − CMV − taxas.','receita − CMV − (receita × 12,7%)','commerce.produto_custo + parametros_financeiros','ANTES do frete pago. O frete não está no banco: investigado, o Bling só preenche em 5% dos pedidos.'],
   ['Faturamento líquido','Bruto menos descontos, cancelamentos e reembolsos.','bruto − desconto − reembolso','core.vw_app_pedido','Alterna com bruto nas Configurações. Medido: 18 pedidos refunded, 195 com cancelled_at.'],
-  ['LTV do cohort','Receita acumulada ÷ clientes do cohort.','receita acumulada ÷ clientes','core.vw_app_pedido','Comparar só cohorts de idade parecida.']
+  ['LTV do cohort','Receita acumulada ÷ clientes do cohort.','receita acumulada ÷ clientes','core.vw_app_pedido','Comparar só cohorts de idade parecida.'],
+  ['Margem ÷ CAC (180d)','Margem de contribuição que o cohort acumulou em 180 dias, dividida pelo CAC do mês em que ele foi adquirido.','margem 180d por cliente ÷ CAC do mês','core.vw_payback_coorte','Abaixo de 1,00 o cohort não devolveu a mídia. O denominador usa clientes com PRIMEIRA COMPRA PAGA no mês, não o campo is_new_customer — aquele campo conta quem só tinha comprado amostra e inflava a contagem (156 contra 53 em julho), produzindo um CAC 5x otimista.'],
+  ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.']
  ];
  const CL=[
   ['Amostra','Recebeu amostra e ainda não fez compra paga. NÃO é cliente pagante, NÃO é novo cliente, NÃO entra em compras nem em faturamento de aquisição. Quando faz a primeira compra paga, entra normalmente como novo cliente — a regra está implementada na ordem do cálculo.'],
