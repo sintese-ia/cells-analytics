@@ -168,7 +168,11 @@ const CAT={amostra:{n:'Amostra',cor:'#C9C9C4'},novo_avulso:{n:'Novos — compra 
  antigo_inicio_assinatura:{n:'Antigos — início de assinatura',cor:'#F79767'},
  recorrente:{n:'Assinantes recorrentes',cor:'#F7C9AC'}};
 const ORD=['amostra','novo_avulso','novo_assinatura','antigo_avulso','antigo_inicio_assinatura','recorrente'];
-const GRUPO={meta:'Mídia paga',google:'Mídia paga',tiktok:'Mídia paga',whatsapp:'Mídia paga',
+// google_ads x google_organico: o utm_source nao separava (o sufixo `g` do feed do Merchant
+// Center serve listagem gratuita E Shopping pago). Quem separa e o gclid. `google` fica no mapa
+// por seguranca, para dado antigo nao cair em "Outros".
+const GRUPO={meta:'Mídia paga',google:'Mídia paga',google_ads:'Mídia paga',tiktok:'Mídia paga',whatsapp:'Mídia paga',
+ google_organico:'Orgânico',google_organic:'Orgânico',
  instagram:'Orgânico',direct:'Orgânico',email:'CRM',nutri:'Profissionais',evento:'Presencial',
  parceria:'Influência',ia:'Orgânico','woo-legado':'Outros','nao-atribuido':'Outros',crm:'CRM',youtube:'Orgânico',
  carta:'Outros',indicacao:'Influência',organico:'Orgânico'};
@@ -765,7 +769,7 @@ function pgCohorts(){
   ${pbRaz!=null?`<div class="al ${pbRaz>=1?'o':'c'}" style="margin-top:8px"><b>${pbRaz>=1?'Paga.':'Não paga.'}</b>
    ${R0(pbSp)} de mídia geraram ${IN(pbCli)} clientes pagantes, que devolveram ${R$(dv(pbMg,pbCli))} de margem de contribuição por cliente em 180 dias contra um CAC de ${R$(dv(pbSp,pbCli))} — <b>${pbRaz.toFixed(2).replace('.',',')}x</b>.
    ${pbRaz<1?'E não há cauda longa para resgatar: entre os clientes com mais de 180 dias, a média é de 1,67 pedidos e 1,5 mês de vida, então 180 dias já é praticamente o ciclo inteiro.':''}</div>`:''}
-  <div class="al w" style="margin-top:8px"><b>Duas ressalvas.</b> (1) O <b>Google Ads não tem custo no banco</b> apesar de ser a 2ª maior receita — as linhas dele aparecem como "sem custo" e o quadro consolidado pode ser pior que o mostrado. (2) Margem aqui é <b>contribuição</b> (receita − CMV − taxas): não inclui custo fixo, salário nem frete real. Cohort marcado <span class="pl i">imaturo</span> tem menos de 180 dias e a janela ainda não fechou.</div></div>
+  <div class="al w" style="margin-top:8px"><b>Como ler as lacunas.</b> <b>“sem custo” em canal orgânico não é dado faltando</b> — <b>google_organico</b>, direct e instagram não têm mídia por definição, então não têm CAC. O que fica de fora é o custo de <b>influenciador, nutricionista e evento</b>, que não passa por plataforma e não está no banco. Margem aqui é <b>contribuição</b> (receita − CMV − taxas): não inclui custo fixo, salário nem frete real. Cohort marcado <span class="pl i">imaturo</span> tem menos de 180 dias e a janela ainda não fechou, então a razão é piso, não veredito.</div></div>
  <div class="sc"><div class="sch"><div><h2>Cohort de amostras</h2>
   <p>Baseado no mês em que a pessoa recebeu a amostra. Amostra não é cliente pagante — o que importa é quanto dela converte, e a que custo.</p></div></div>
   <div class="pn">${TA.html}</div>
@@ -916,6 +920,7 @@ function pgDefinicoes(){
   ['Margem de contribuição','Faturamento − CMV − taxas.','receita − CMV − (receita × 12,7%)','commerce.produto_custo + parametros_financeiros','ANTES do frete pago. O frete não está no banco: investigado, o Bling só preenche em 5% dos pedidos.'],
   ['Faturamento líquido','Bruto menos descontos, cancelamentos e reembolsos.','bruto − desconto − reembolso','core.vw_app_pedido','Alterna com bruto nas Configurações. Medido: 18 pedidos refunded, 195 com cancelled_at.'],
   ['LTV do cohort','Receita acumulada ÷ clientes do cohort.','receita acumulada ÷ clientes','core.vw_app_pedido','Comparar só cohorts de idade parecida.'],
+  ['Google pago × Google orgânico','Separa clique de anúncio de busca orgânica e listagem grátis do Shopping.','gclid real no pedido OU na sessão de aquisição → google_ads; senão google_organico','core.vw_pedido_google_pago','O utm_source NÃO separa: o sufixo `g` que o feed do Merchant Center cola na URL serve listagem grátis e Shopping pago igualmente. gclid só existe em clique pago. Filtra gclid falso (havia 163 sessões com o literal LIVEgc, um único valor repetido). Usa o gclid do pedido e o da sessão porque cada um sozinho subconta.'],
   ['Tempo entre etapas','Dias entre um passo da jornada e o seguinte.','mediana e quartis dos dias entre os dois eventos','core.vw_tempo_entre_etapas','Mediana, não média: a distribuição tem cauda longa. Conta só quem completou a transição — a coluna "Não deram" mostra o que ficou fora.'],
   ['Margem ÷ CAC (180d)','Margem de contribuição que o cohort acumulou em 180 dias, dividida pelo CAC do mês em que ele foi adquirido.','margem 180d por cliente ÷ CAC do mês','core.vw_payback_coorte','Abaixo de 1,00 o cohort não devolveu a mídia. O denominador usa clientes com PRIMEIRA COMPRA PAGA no mês, não o campo is_new_customer — aquele campo conta quem só tinha comprado amostra e inflava a contagem (156 contra 53 em julho), produzindo um CAC 5x otimista.'],
   ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.']
