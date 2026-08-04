@@ -112,4 +112,14 @@ select mes, round((sum(sp) filter (where am>aq))::numeric,2) spend_am,
  coalesce(sum(am) filter (where am>aq),0)::int am_atrib,
  round((sum(sp) filter (where am>aq)/nullif(sum(am) filter (where am>aq),0))::numeric,2) custo_por_amostra
 from t group by 1 order by 1`,
+  // --- Semanal / realizado x projetado (04/08/2026) ---
+  k7:   `select * from core.vw_kpi_7d where ate >= current_date - 90 order by ate`,
+  ksem: `select * from core.vw_kpi_semana where semana >= current_date - 120 order by semana`,
+  kmes: `select * from core.vw_kpi_mes where mes >= '2026-05-01' order by mes`,
+  plano:`select * from core.plano_mes order by mes`,
+  // --- Grid de midia: canal > campanha > conjunto > anuncio ---
+  grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
+   nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,
+   plat_compras, pedidos, nc_pedidos, receita, nc_receita, conta, margem, nc_margem
+  from core.vw_ads_metricas_dia where dia >= current_date - 60 order by dia`,
 };

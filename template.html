@@ -182,7 +182,7 @@ const MAX=dias.reduce((a,r)=>r.dia>a?r.dia:a,'2026-01-01'), MIN='2026-01-01';
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
-const S={pg:'resumo',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',eixo:'pedido',rec:'liq',
+const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'spend',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',eixo:'pedido',rec:'liq',
  gran:'dia',ind:'liq',srt:{},oc:{},mais:false,d1:'',d2:''};
 function addD(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function jan(){
@@ -373,12 +373,176 @@ const PGS={
  atribuicao:{t:'Atribuição',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
  tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
+ semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
+ midia:{t:'Mídia',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
  campanhas:{t:'Campanhas',ic:'M3 11l19-7-7 19-3-8-9-4z'},
  cohorts:{t:'Cohorts',ic:'M4 6h16M4 12h11M4 18h6'},
  jornadas:{t:'Jornadas',ic:'M4 17h4l3-10 3 6 2-4h4'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
 };
+
+
+/* ==================== SEMANAL — realizado x projetado ==================== */
+// A conta e NOVOS + RECOMPRA + NOVOS ASSINANTES (regra do Gabriel, 04/08). Amostra e MRR ficam
+// FORA do ROAS e do CAC: amostra nao e venda que a midia precisa pagar e MRR e renovacao de
+// assinante de mes anterior. Os dois aparecem, em bloco proprio.
+function pgSemanal(){
+ const J=D.k7||[], SM=D.ksem||[], MS=D.kmes||[];
+ if(!J.length) return `<div class="emp">Sem dado de janela de 7 dias. Confira <code>core.vw_kpi_7d</code>.</div>`;
+ const j=J[J.length-1];
+ const mes=MS.filter(m=>m.fat_op_meta!=null).slice(-1)[0]||MS[MS.length-1]||{};
+ const dl=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
+   const p=100*a/b-100; return `<span style="color:${p>=0?'var(--ok)':'var(--er)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
+ const dlInv=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
+   const p=100*a/b-100; return `<span style="color:${p<=0?'var(--ok)':'var(--er)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
+ const cd=(t,v,n)=>`<div class="cd"><div class="k">${t}</div><div class="v">${v}</div><div class="n">${n}</div></div>`;
+ const pct=(a,b)=>(b&&b!==0)?100*a/b:null;
+
+ const conta=`<div class="cds">
+  ${cd('Faturamento da conta',R0(j.fat_op),`${dl(j.fat_op,j.fat_op_ant)} vs 7 dias antes · meta ${R0(j.fat_op_meta_ritmo)} (${PC(j.pct_op_ritmo)})`)}
+  ${cd('ROAS da conta',RT(j.roas_op),`${dl(j.roas_op,j.roas_op_ant)} · meta ${RT(j.roas_op_meta)}`)}
+  ${cd('CAC dos novos',R0(j.cac_novos),`${dlInv(j.cac_novos,j.cac_novos_ant)} · meta ${R0(j.cac_meta)}`)}
+  ${cd('Investido',R0(j.custo_total),`${dl(j.custo_total,j.custo_total_ant)} · orçamento do ritmo ${R0(j.custo_meta_ritmo)}`)}
+ </div>`;
+ const blocos=`<div class="cds">
+  ${cd('1 · Novos',R0(j.fat_novos),`${j.qtd_novos} clientes novos · meta ${RT(j.qtd_novos_meta_ritmo)}`)}
+  ${cd('2 · Recompra (antigos)',R0(j.fat_recorrente),'cliente que já tinha comprado')}
+  ${cd('3 · Novos assinantes',R0(j.novos_assinantes),'vira MRR no mês que vem')}
+ </div>`;
+ const fora=`<div class="cds">
+  ${cd('Fora · Amostra',R0(j.amostra),`${j.qtd_amostras} amostras · não é venda que a mídia paga`)}
+  ${cd('Fora · MRR',R0(j.mrr),'renovação de assinante de mês anterior')}
+ </div>`;
+
+ const linhasSem = SM.slice().reverse().slice(0,14).map(w=>{
+   const semMeta=!w.dias_com_plano, parcial=w.dias_com_plano>0&&w.dias_com_plano<7;
+   const meta = w.semana_parcial ? (w.fat_op_meta||0)*(w.dias_decorridos||0)/7 : w.fat_op_meta;
+   const p = pct(w.fat_op, meta);
+   const cor = w.acao==='PAUSA'?'var(--er)':w.acao==='ESCALA'?'var(--ok)':'var(--av)';
+   return `<tr${w.semana_parcial?' class="sub"':''}>
+     <td class="l">${DT(w.semana).slice(0,5)}–${DT(w.semana_fim).slice(0,5)}${w.semana_parcial?' <span class="t3">em curso</span>':''}</td>
+     <td>${R0(w.fat_op)}</td><td>${semMeta?'—':R0(meta)+(parcial?` <span class="t3">(${w.dias_com_plano}d)</span>`:'')}</td>
+     <td>${semMeta?'—':PC(p)}</td><td>${w.qtd_novos}</td><td>${R0(w.custo_total)}</td>
+     <td>${R0(w.cac_novos_4s)}</td><td>${RT(w.roas_compras_liq_4s)}</td>
+     <td style="color:${cor};font-weight:650">${w.acao}</td></tr>`}).join('');
+
+ const qbr = [['1 · Novos','fat_novos','fat_novos_meta'],['2 · Recompra','fat_recorrente','fat_recorrente_meta'],
+   ['3 · Novos assinantes','novos_assinantes','novos_assinantes_meta'],
+   ['Total da conta','fat_op','fat_op_meta'],['Investimento','custo_total','custo_meta_plano'],
+   ['Fora · Amostra','amostra','amostra_meta'],['Fora · MRR','mrr','mrr_meta']].map(([n,k,mk])=>{
+   const real=mes[k],metaMes=mes[mk];
+   const k2=(mes.dias_decorridos||0)/(mes.dias_do_mes||31);
+   const metaHoje=metaMes!=null?metaMes*k2:null, p=pct(real,metaHoje);
+   return `<tr${n.startsWith('Fora')?' class="sub"':''}><td class="l">${n}</td><td>${R0(real)}</td>
+     <td>${R0(metaHoje)}</td><td>${p==null?'—':PC(p)}</td><td>${R0(metaMes)}</td>
+     <td>${metaMes==null?'—':R0(metaMes-real)}</td></tr>`}).join('');
+
+ return `
+ <div class="sc"><div class="sch"><div><h2>A conta — 7 dias, ${DT(j.de).slice(0,5)} a ${DT(j.ate).slice(0,5)}</h2>
+  <p>Janela móvel: sempre 7 dias dos dois lados, sem o viés da semana pela metade. A conta é
+  <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.</p></div></div>
+  ${conta}</div>
+ <div class="sc"><div class="sch"><div><h2>Composição da conta</h2></div></div>${blocos}</div>
+ <div class="sc"><div class="sch"><div><h2>Fora da conta</h2>
+  <p>Aparecem, mas não entram no ROAS nem no CAC.</p></div></div>${fora}</div>
+ <div class="sc"><div class="sch"><div><h2>Semana a semana</h2>
+  <p>A ação lê a janela de 4 semanas, nunca a semana isolada.</p></div></div>
+  <div class="tw"><table><thead><tr><th class="l">Semana</th><th>Conta</th><th>Meta</th><th>%</th>
+   <th>Novos</th><th>Investido</th><th>CAC 4s</th><th>ROAS 4s</th><th>Ação</th></tr></thead>
+   <tbody>${linhasSem||'<tr><td colspan="9" class="l">Sem semanas no período.</td></tr>'}</tbody></table></div></div>
+ <div class="sc"><div class="sch"><div><h2>Quebra da meta — ${mes.mes?DT(mes.mes).slice(3):''}</h2>
+  <p>“Deveria estar” = meta do mês × dias decorridos. O MRR não se comporta assim: 7 das 13
+  cobranças do clube caem no dia 30/31, então ele sobe de uma vez no fim do mês.</p></div></div>
+  <div class="tw"><table><thead><tr><th class="l">Linha</th><th>Realizado</th><th>Deveria estar</th>
+   <th>Ritmo</th><th>Meta do mês</th><th>Falta</th></tr></thead><tbody>${qbr}</tbody></table></div></div>`;
+}
+
+/* ==================== MÍDIA — canal > campanha > conjunto > anúncio ==================== */
+function pgMidia(){
+ const R=D.grid||[];
+ if(!R.length) return `<div class="emp">Sem dado de mídia. Confira <code>core.vw_ads_metricas_dia</code>.</div>`;
+ const dias=+S.gper||7, maxd=R.reduce((m,r)=>r.dia>m?r.dia:m,'0000-00-00');
+ const lim=new Date(maxd+'T12:00:00'); lim.setDate(lim.getDate()-(dias-1));
+ const de=lim.toISOString().slice(0,10);
+ const KS=['spend','impressoes','ob_clicks','plat_lpv','plat_atc','plat_checkout','plat_compras',
+   'pedidos','nc_pedidos','receita','nc_receita','conta','margem','nc_margem'];
+ const Z0=()=>Object.fromEntries(KS.map(k=>[k,0]));
+ const som=(d,r)=>{KS.forEach(k=>d[k]+=(+r[k]||0));return d};
+ const raiz=new Map(); const q=(S.gbusca||'').toLowerCase();
+ for(const r of R){
+   if(r.dia<de||r.dia>maxd) continue;
+   if(q && ![r.campanha,r.conjunto,r.anuncio].some(x=>String(x||'').toLowerCase().includes(q))) continue;
+   const n1=raiz.get(r.canal)||{n:r.canal,lv:1,a:Z0(),f:new Map()}; raiz.set(r.canal,n1); som(n1.a,r);
+   const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); som(n2.a,r);
+   const n3=n2.f.get(r.conjunto)||{n:r.conjunto,lv:3,a:Z0(),f:new Map()}; n2.f.set(r.conjunto,n3); som(n3.a,r);
+   const n4=n3.f.get(r.anuncio)||{n:r.anuncio,lv:4,a:Z0(),f:null,ni:r.nao_identificado}; n3.f.set(r.anuncio,n4); som(n4.a,r);
+ }
+ // metrica de CUSTO nao existe sem spend: 0/n daria 0 e pintaria de verde um CPA inexistente
+ const cst=(sp,n)=>(!sp||!n)?null:sp/n, dv=(a,b)=>(b&&b!==0)?a/b:null;
+ const COLS=[
+  {k:'spend',t:'Spend',f:a=>R0(a.spend),v:a=>a.spend},
+  {k:'pedidos',t:'Purchases',f:a=>nf(a.pedidos,0),v:a=>a.pedidos},
+  {k:'cpa',t:'CPA',f:a=>R0(cst(a.spend,a.pedidos)),v:a=>cst(a.spend,a.pedidos)},
+  {k:'aov',t:'AOV',f:a=>R0(dv(a.receita,a.pedidos)),v:a=>dv(a.receita,a.pedidos)},
+  {k:'conta',t:'Conta',f:a=>R0(a.conta),v:a=>a.conta},
+  {k:'roas',t:'ROAS',f:a=>RT(a.spend?dv(a.conta,a.spend):null),v:a=>a.spend?dv(a.conta,a.spend):null,c:'roas'},
+  {k:'ncp',t:'NCP',f:a=>nf(a.nc_pedidos,0),v:a=>a.nc_pedidos},
+  {k:'nccpa',t:'NC CPA',f:a=>R0(cst(a.spend,a.nc_pedidos)),v:a=>cst(a.spend,a.nc_pedidos),c:'cac'},
+  {k:'ncroas',t:'NC ROAS',f:a=>RT(a.spend?dv(a.nc_receita,a.spend):null),v:a=>a.spend?dv(a.nc_receita,a.spend):null},
+  {k:'ncpp',t:'NC PP',f:a=>R0(dv(a.nc_margem,a.nc_pedidos)),v:a=>dv(a.nc_margem,a.nc_pedidos)},
+  {k:'cr',t:'CR',f:a=>PC(dv(100*a.pedidos,a.plat_lpv),2),v:a=>dv(100*a.pedidos,a.plat_lpv),p:1},
+  {k:'atc',t:'ATC',f:a=>nf(a.plat_atc,0),v:a=>a.plat_atc,p:1},
+  {k:'catc',t:'Cost ATC',f:a=>R0(cst(a.spend,a.plat_atc)),v:a=>cst(a.spend,a.plat_atc),p:1},
+  {k:'ck',t:'Start Checkout',f:a=>nf(a.plat_checkout,0),v:a=>a.plat_checkout,p:1},
+  {k:'uv',t:'Unique Visitors',f:a=>nf(a.plat_lpv,0),v:a=>a.plat_lpv,p:1},
+  {k:'cpv',t:'CPV',f:a=>R$(cst(a.spend,a.plat_lpv)),v:a=>cst(a.spend,a.plat_lpv),p:1},
+  {k:'obc',t:'OB Clicks',f:a=>nf(a.ob_clicks,0),v:a=>a.ob_clicks,p:1},
+  {k:'obctr',t:'OB CTR',f:a=>PC(dv(100*a.ob_clicks,a.impressoes),2),v:a=>dv(100*a.ob_clicks,a.impressoes),p:1}];
+ const col=COLS.find(c=>c.k===S.gord)||COLS[0];
+ const ord=l=>l.sort((x,y)=>{const a=col.v(x.a),b=col.v(y.a);
+   if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
+ const cor=(c,v)=>{if(v==null||!c.c)return'';
+   if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
+   return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
+ const out=[];
+ const linha=(no,cam)=>{
+   const tem=no.f&&no.f.size>0, ab=!!S.gop[cam];
+   const tds=COLS.map(c=>{const v=c.v(no.a),k=cor(c,v);
+     return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a)}</td>`}).join('');
+   out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-(S.gcanal?2:1))*16}px">`
+    +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`:'<span style="display:inline-block;width:13px"></span>')
+    +`${no.n}</td>${tds}</tr>`);
+   if(tem&&ab) ord([...no.f.values()]).forEach(f=>linha(f,cam+'›'+f.n));
+ };
+ // Canal e SELETOR no topo (padrao Triple Whale), nao linha da tabela: com um canal escolhido a
+ // tabela ja comeca em campanha e economiza um clique em toda leitura.
+ let lst;
+ if(S.gcanal){ const c=raiz.get(S.gcanal); lst = c?ord([...c.f.values()]):[]; }
+ else lst = ord([...raiz.values()]);
+ for(const n of lst){ if(S.gsp&&!n.a.spend) continue; linha(n,n.n); }
+ const tot=Z0(); lst.forEach(n=>som(tot,n.a));
+ out.push(`<tr class="tot"><td class="l fx">TOTAL</td>${COLS.map(c=>`<td>${c.f(tot)}</td>`).join('')}</tr>`);
+ const th=COLS.map(c=>`<th data-gord="${c.k}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
+ const per=[['7','7 dias'],['14','14 dias'],['30','30 dias'],['60','60 dias']]
+   .map(([v,t])=>`<button data-gper="${v}" class="${String(S.gper)===v?'on':''}">${t}</button>`).join('');
+ const canais=[...raiz.keys()].sort();
+ const selCanal=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
+   +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
+ return `
+ <div class="sc"><div class="sch"><div><h2>Grid de mídia</h2>
+  <p>Abre <b>canal → campanha → conjunto → anúncio</b>. Colunas em cinza são reportadas pelo
+  Meta (pixel da plataforma); as demais são pedido real medido no banco.</p></div>
+  <div class="sg">${selCanal}${per}</div></div>
+  <div class="tw"><table><thead><tr><th class="l fx">Campanha</th>${th}</tr></thead>
+   <tbody>${out.join('')}</tbody></table></div></div>
+ <div class="sc"><p class="t3" style="font-size:12px;line-height:1.6">
+  <b>Receita por anúncio</b> vem do <code>utm_term</code>, que casa com o nome do anúncio no Meta
+  em ~78% do spend. O que não casa aparece como <b>(não identificado)</b> dentro do conjunto, com
+  spend zero — nunca colado em outro criativo.<br>
+  <b>Unique Visitors, CPV e CR</b> usam o <code>landing_page_view</code> do Meta: é visita
+  reportada pela plataforma, só de tráfego Meta — não é sessão de site.</p></div>`;
+}
 
 function pgResumo(){
  const j=jan(),jc=janC(j),A=agg(j),B=jc?agg(jc):null;
@@ -1059,6 +1223,7 @@ function render(){
   try{
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
+    S.pg==='semanal'?pgSemanal():S.pg==='midia'?pgMidia():
     S.pg==='campanhas'?pgCampanhas():S.pg==='cohorts'?pgCohorts():S.pg==='jornadas'?pgJornadas():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
@@ -1082,6 +1247,11 @@ function bind(el){
  el.querySelectorAll('[data-cab]').forEach(b=>b.onclick=()=>{S.cab=b.dataset.cab;render()});
  el.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>{S.rec=b.dataset.rec;url();render()});
  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.pg=b.dataset.go;url();render()});
+ el.querySelectorAll('[data-gtog]').forEach(b=>b.onclick=()=>{const k=decodeURIComponent(b.dataset.gtog);
+   S.gop[k]?delete S.gop[k]:S.gop[k]=1; render()});
+ el.querySelectorAll('[data-gper]').forEach(b=>b.onclick=()=>{S.gper=b.dataset.gper;S.gop={};render()});
+ el.querySelectorAll('[data-gord]').forEach(b=>b.onclick=()=>{S.gord=b.dataset.gord;render()});
+ el.querySelectorAll('[data-gcanal]').forEach(b=>b.onchange=()=>{S.gcanal=b.value;S.gop={};render()});
  const fi=el.querySelector('#fi'); if(fi)fi.onchange=()=>{S.ind=fi.value;render()};
  const dq=el.querySelector('#dq'); if(dq)dq.oninput=()=>{const v=dq.value.toLowerCase();
   el.querySelectorAll('#dl .df').forEach(d=>d.style.display=d.dataset.q.includes(v)?'':'none')};
