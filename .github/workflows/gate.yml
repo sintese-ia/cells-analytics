@@ -41,17 +41,25 @@ jobs:
       - name: o servidor sobe e responde na porta
         # Sem DATABASE_URL o carregamento falha de proposito: o que se verifica aqui e que o
         # processo NAO morre e que a tela de senha continua sendo servida (modo degradado).
+        # A tela de senha responde 401, nao 200 — e isso e o comportamento correto. Este passo
+        # exigia 200 e por isso reprovava todo commit desde que existe, inclusive os que estavam
+        # no ar. O `curl -sf` do laco tinha o mesmo defeito: `-f` falha em 401, entao o laco nunca
+        # saia antes das 25 tentativas. Aceitar 200 ou 401; qualquer outro codigo e falha de fato.
         run: |
           SENHA=ci node server.js & SRV=$!
           for i in $(seq 1 25); do
-            if curl -sf -o /dev/null http://127.0.0.1:3000/; then break; fi
+            if curl -s -o /dev/null http://127.0.0.1:3000/; then break; fi
             sleep 1
           done
           CODE=$(curl -s -o /tmp/resp.html -w '%{http_code}' http://127.0.0.1:3000/)
           echo "HTTP $CODE"
-          grep -qi 'senha\|password' /tmp/resp.html && echo 'ok  tela de senha servida'
           kill $SRV
-          test "$CODE" = "200"
+          case "$CODE" in
+            200|401) echo "ok  servidor respondeu $CODE sem morrer" ;;
+            *) echo "FALHA: esperado 200 ou 401, veio $CODE"; exit 1 ;;
+          esac
+          grep -qi 'senha\|password' /tmp/resp.html || { echo 'FALHA: tela de senha nao foi servida'; exit 1; }
+          echo 'ok  tela de senha servida'
 
       - name: o HTML nao pode sair sem cookie de sessao
         run: |
