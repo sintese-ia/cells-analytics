@@ -1,14 +1,26 @@
 // SQL extraído de /tmp/ex4.py — mesma camada semântica do snapshot.
 module.exports = {
-  dias: `select created_at::date dia, canal, canal_aq, sistema, categoria,
- count(*) pedidos, count(distinct coalesce(cid,email)) clientes,
+  // `ks` = ids densos das identidades do grupo. Sem isso o app somava count(distinct) de cada
+  // grupo para achar "clientes unicos", e quem compra em cinco dias contava cinco vezes: no ano
+  // de 2026 dava 1.053 contra 624 reais (+69%), e Receita por cliente saia 41% subestimada.
+  // Com o array o app faz a uniao real por periodo/filtro. Sao ~2,2 mil pedidos no historico
+  // inteiro — o custo de payload e irrelevante perto de errar o numero.
+  // Piso em 2025-01-01: o banco comeca em 16/01/2025 e o painel so enxergava 2026, entao o total
+  // de clientes nunca podia fechar (1.206 pagantes no historico, 1.391 com amostra).
+  dias: `with b as (
+ select created_at, canal, canal_aq, sistema, categoria, bruto, desconto, reembolso,
+        liquido, cmv, margem, cmv_ok, basis,
+        dense_rank() over (order by coalesce(cid,email)) kid
+   from core.vw_app_pedido where created_at>='2025-01-01')
+select created_at::date dia, canal, canal_aq, sistema, categoria,
+ count(*) pedidos, count(distinct kid) clientes, array_agg(distinct kid) ks,
  round(sum(bruto)::numeric,2) bruto, round(sum(desconto)::numeric,2) desc_,
  round(sum(reembolso)::numeric,2) reemb, round(sum(liquido)::numeric,2) liq,
  round(sum(cmv)::numeric,2) cmv, round(sum(margem)::numeric,2) marg,
  sum((cmv_ok)::int) cmv_ok,
  sum((coalesce(basis,'session') in ('session','landing'))::int) med,
  sum((basis='inherited')::int) inf
-from core.vw_app_pedido where created_at>='2026-01-01' group by 1,2,3,4,5`,
+from b group by 1,2,3,4,5`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita
@@ -85,10 +97,15 @@ d as (select a.mes, count(*) n from mens a
 select to_char(m.mes,'YYYY-MM') mes, m.ativos::int, coalesce(d.n,0)::int perdidos,
  round(100.0*coalesce(d.n,0)/m.ativos,1) churn_pct
 from m left join d on d.mes=m.mes where m.mes < (select max(mes) from mens) order by 1`,
-  camp: `select campanha, conjunto, ids_no_nome, de, ate, spend, impr, cliques,
+  // GRAO DE DIA, nao de periodo. `vw_campanha_dia` (nome mentiroso) agrupa por campanha+conjunto
+  // sem dia e expoe min(date_start)/max(date_stop); a tela filtrava por SOBREPOSICAO e somava a
+  // campanha INTEIRA em qualquer janela que encostasse nela. Em 06/08/2026, numa leitura de 7 dias:
+  // gasto R$ 12.385 contra R$ 3.630 reais (+241%) e CAC R$ 179,50 pintado de VERDE onde o real era
+  // R$ 605,02. Ver cells-infra/fixes/2026-08-06-vw-campanha-dia-real.sql.
+  camp: `select dia, campanha, conjunto, ids_no_nome, spend, impr, cliques,
  compras_plat, receita_plat, ped_total, rec_total, ped_amostra, rec_amostra,
  ped_aquisicao, rec_aquisicao, assin_novo, marg_total, marg_aquisicao
-from core.vw_campanha_dia
+from core.vw_campanha_dia_real
 where spend>0 or ped_total>0`,
   sess: `select dia, canal, canal_aq, categoria, sessoes, dias, primeira_sessao, pedidos, receita
 from core.vw_sessoes_ate_compra`,

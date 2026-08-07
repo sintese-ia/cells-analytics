@@ -178,7 +178,25 @@ const GRUPO={meta:'Mídia paga',google:'Mídia paga',google_ads:'Mídia paga',ti
  carta:'Outros',indicacao:'Influência',organico:'Orgânico'};
 const dias=D.dias.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
 const spend=D.spend.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
-const MAX=dias.reduce((a,r)=>r.dia>a?r.dia:a,'2026-01-01'), MIN='2026-01-01';
+// MIN sai do dado, nao de constante: o banco comeca em 16/01/2025 e o painel estava cravado em
+// 2026-01-01, entao o total de clientes nunca fechava (mostrava 624 onde o historico tem 1.206).
+const MAX=dias.reduce((a,r)=>r.dia>a?r.dia:a,'2026-01-01');
+const MIN=dias.reduce((a,r)=>r.dia<a?r.dia:a,'9999-12-31');
+
+// ULTIMO DIA FECHADO — fronteira do coletor de gasto do Meta, que roda ~7h atras.
+// O dia corrente entra com receita e SEM gasto: em 06/08/2026 foram 11 pedidos e R$ 716,91
+// com R$ 0,00 de spend, o que deixava o CPA do grid 24% otimista e o CAC da Semanal 11% barato.
+// Toda metrica de CUSTO (CPA, CAC, ROAS) termina aqui; receita pura pode ir ate MAX.
+// NAO derivar de `spend` (vw_mvp_custo_dia): o custo mensal e rateado por dia e chega a lancar
+// em dia futuro — em 06/08 havia WhatsApp ate 31/08. A fronteira honesta e o grid de midia.
+const FECHADO=(D.grid||[]).reduce((a,r)=>{const d=String(r.dia).slice(0,10);
+ return (+r.spend>0&&d>a)?d:a},'2026-01-01')||MAX;
+const DIA_ABERTO=FECHADO<MAX;
+// corta o fim de uma janela no ultimo dia fechado
+const jf=j=>j?[j[0],(j[1]>FECHADO?FECHADO:j[1])]:j;
+const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(MAX)} ainda não fechou.</b>
+ O coletor de gasto do Meta vai até ${DT(FECHADO)}, então ${MAX===FECHADO?'':`o dia ${DT(MAX)} tem pedido e não tem gasto`}.
+ ${o||'As métricas de custo desta tela param em '+DT(FECHADO)+' — senão o CPA sai barato por falta de denominador.'}</div>`:'';
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
@@ -196,7 +214,8 @@ function jan(){
   case 'mesant':{const m=new Date(f.slice(0,7)+'-01T12:00:00');m.setMonth(m.getMonth()-1);
    const i=m.toISOString().slice(0,10);const l=new Date(m.getFullYear(),m.getMonth()+1,0);
    return[i,l.toISOString().slice(0,10)]}
-  case 'ano':return['2026-01-01',f];
+  case 'ano':return[f.slice(0,4)+'-01-01',f];
+  case 'tudo':return[MIN,f];
   case 'custom':return[S.d1||MIN,S.d2||f];
   default:return[addD(f,-29),f]}
 }
@@ -214,8 +233,14 @@ const val=r=>S.rec==='liq'?r.liq:r.bruto;
 const cCan=r=>S.eixo==='aquisicao'?r.canal_aq:r.canal;
 
 /* ========== agregação ========== */
-function Z(){const o={rec:0,bruto:0,desc:0,reemb:0,cmv:0,marg:0,ped:0,cli:0,cmv_ok:0,med:0,inf:0,spend:0};
+// `ks` e o conjunto de identidades do balde. `cli` deixa de ser soma de count(distinct) por grupo
+// (que contava cinco vezes quem comprou em cinco dias: 1.053 contra 624 reais no ano de 2026) e
+// passa a ser o tamanho da UNIAO. Fecha sozinho tambem Receita por cliente, que saia 41% baixa.
+function Z(){const o={rec:0,bruto:0,desc:0,reemb:0,cmv:0,marg:0,ped:0,cli:0,cmv_ok:0,med:0,inf:0,spend:0,ks:new Set()};
  for(const c of ORD){o['r_'+c]=0;o['p_'+c]=0}return o}
+// une os `ks` de uma lista de baldes e recalcula `cli`. Chamar sempre que somar baldes na mao.
+function uneKS(destino,fontes){for(const f of fontes){if(f&&f.ks)for(const k of f.ks)destino.ks.add(k)}
+ destino.cli=destino.ks.size;return destino}
 function agg(j,{canalView=false}={}){
  const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{}});
  if(!j)return A;
@@ -233,9 +258,14 @@ function agg(j,{canalView=false}={}){
   const k=A.cat[r.categoria]||(A.cat[r.categoria]=Object.assign(Z(),{categoria:r.categoria}));
   for(const t of [A,o,k]){
    t.rec+=v;t.bruto+=r.bruto;t.desc+=r.desc_;t.reemb+=r.reemb;t.cmv+=r.cmv;t.marg+=r.marg;
-   t.ped+=r.pedidos;t.cli+=r.clientes;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
+   t.ped+=r.pedidos;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
+   if(r.ks)for(const x of r.ks)t.ks.add(x);
    t['r_'+r.categoria]+=v;t['p_'+r.categoria]+=r.pedidos}
  }
+ // cli = tamanho da uniao, nunca soma de contagens
+ A.cli=A.ks.size;
+ for(const o of Object.values(A.can))o.cli=o.ks.size;
+ for(const k of Object.values(A.cat))k.cli=k.ks.size;
  for(const s of spend){
   if(!inP(s.dia,j))continue;
   if(S.can&&s.fonte!==S.can)continue;
@@ -257,7 +287,9 @@ function serie(j,g,diaMax){
   const c=cCan(r);
   if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
   const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
-  o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o.cli+=r.clientes;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos}
+  o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos;
+  if(r.ks)for(const x of r.ks)o.ks.add(x)}
+ for(const o of Object.values(m))o.cli=o.ks.size;
  for(const s of spend){
   if(!inP(s.dia,j))continue; if(S.can&&s.fonte!==S.can)continue;
   if(S.gru&&(GRUPO[s.fonte]||'Outros')!==S.gru)continue;
@@ -390,7 +422,11 @@ const PGS={
 function pgSemanal(){
  const J=D.k7||[], SM=D.ksem||[], MS=D.kmes||[];
  if(!J.length) return `<div class="emp">Sem dado de janela de 7 dias. Confira <code>core.vw_kpi_7d</code>.</div>`;
- const j=J[J.length-1];
+ // A ultima linha de vw_kpi_7d e a janela que termina HOJE — e hoje ainda nao tem gasto do Meta
+ // (coletor ~7h atras). Em 06/08/2026 isso dava CAC de R$ 411 onde a janela fechada dava R$ 461.
+ // Manchete so com janela fechada; o dia em aberto aparece no aviso, nao no numero.
+ const jFech=J.filter(x=>String(x.ate).slice(0,10)<=FECHADO);
+ const j=jFech.length?jFech[jFech.length-1]:J[J.length-1];
  const mes=MS.filter(m=>m.fat_op_meta!=null).slice(-1)[0]||MS[MS.length-1]||{};
  const dl=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
    const p=100*a/b-100; return `<span style="color:${p>=0?'var(--ok)':'var(--er)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
@@ -438,7 +474,7 @@ function pgSemanal(){
      <td>${R0(metaHoje)}</td><td>${p==null?'—':PC(p)}</td><td>${R0(metaMes)}</td>
      <td>${metaMes==null?'—':R0(metaMes-real)}</td></tr>`}).join('');
 
- return `
+ return `${avisoAberto('A conta abaixo fecha em '+DT(FECHADO)+' — a janela que inclui hoje ainda não tem o gasto do dia.')}
  <div class="sc"><div class="sch"><div><h2>A conta — 7 dias, ${DT(j.de).slice(0,5)} a ${DT(j.ate).slice(0,5)}</h2>
   <p>Janela móvel: sempre 7 dias dos dois lados, sem o viés da semana pela metade. A conta é
   <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.</p></div></div>
@@ -462,7 +498,9 @@ function pgSemanal(){
 function pgMidia(){
  const R=D.grid||[];
  if(!R.length) return `<div class="emp">Sem dado de mídia. Confira <code>core.vw_ads_metricas_dia</code>.</div>`;
- const dias=+S.gper||7, maxd=R.reduce((m,r)=>r.dia>m?r.dia:m,'0000-00-00');
+ // maxd para no ultimo dia FECHADO: o dia corrente chega com pedido e sem gasto (o coletor do
+ // Meta esta ~7h atras) e derrubava o CPA do grid de R$ 78,60 para R$ 59,50 — 24% otimista.
+ const dias=+S.gper||7, maxd=FECHADO;
  const lim=new Date(maxd+'T12:00:00'); lim.setDate(lim.getDate()-(dias-1));
  const de=lim.toISOString().slice(0,10);
  const KS=['spend','impressoes','ob_clicks','plat_lpv','plat_atc','plat_checkout','plat_compras',
@@ -529,7 +567,7 @@ function pgMidia(){
  const canais=[...raiz.keys()].sort();
  const selCanal=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
    +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
- return `
+ return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Grid de mídia</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>. Colunas em cinza são reportadas pelo
   Meta (pixel da plataforma); as demais são pedido real medido no banco.</p></div>
@@ -621,7 +659,9 @@ function pgResumo(){
 function pgAtribuicao(){
  const j=jan(),jc=janC(j),A=agg(j,{canalView:true}),B=jc?agg(jc,{canalView:true}):null;
  const rows=Object.values(A.can).filter(c=>c.rec>0||c.spend>0).sort((a,b)=>b.rec-a.rec);
- const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},{});
+ // somar `cli` de cada canal contaria duas vezes quem comprou por dois canais — une os conjuntos
+ const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},Z());
+ uneKS(tot,rows);
  const cols=[
   {k:'c',t:'Canal',l:1,fx:1,f:r=>`${r.canal}<br><span class="pl g">${GRUPO[r.canal]||'Outros'}</span>`,raw:r=>r.canal,tf:()=>'<b>Total</b>'},
   {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
@@ -665,8 +705,11 @@ function pgTipoCliente(){
  const cel=(c,B2)=>{const o=A.cat[c]||Z(), ob=B2?(B2.cat[c]||Z()):null;
   return {cat:c,...o,_ant:ob}};
  const mk=(nome,cats,sub,tot)=>{
+  // idem: quem é novo em janeiro e recorrente em março não são dois clientes
   const o=Z(); cats.forEach(c=>{const x=A.cat[c]||Z();for(const k in o)if(typeof x[k]==='number')o[k]+=x[k]});
-  const ob=B?(()=>{const z=Z();cats.forEach(c=>{const x=B.cat[c]||Z();for(const k in z)if(typeof x[k]==='number')z[k]+=x[k]});return z})():null;
+  uneKS(o,cats.map(c=>A.cat[c]).filter(Boolean));
+  const ob=B?(()=>{const z=Z();cats.forEach(c=>{const x=B.cat[c]||Z();for(const k in z)if(typeof x[k]==='number')z[k]+=x[k]});
+   return uneKS(z,cats.map(c=>B.cat[c]).filter(Boolean))})():null;
   return {nome,...o,_ant:ob,_sub:sub,_tot:tot,_cats:cats}};
  const rows=[
   mk('Amostra',['amostra']),
@@ -773,7 +816,7 @@ function pgMensal(){
  // CAT e um mapa fixo das 6 categorias. Se a view emitir uma 7a, o dropdown a oferece e o
  // lookup direto quebrava a tela inteira — cai no proprio codigo da categoria em vez de estourar.
  const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+(CAT[S.cat]?.n||S.cat))].filter(Boolean).join(' · ');
- return `<div class="al o">Esta tela mostra <b>o ano inteiro por desenho</b> — o seletor de período não se aplica aqui.
+ return `<div class="al o">Esta tela mostra <b>todo o histórico por desenho</b> (desde ${DT(MIN)}) — o seletor de período não se aplica aqui.
   Canal, grupo e tipo de cliente <b>sim</b>${fAtivo?`: filtrando por ${fAtivo}`:''}.</div>
   ${MESPARC?`<div class="al w"><b>${MSL[+MESPARC.slice(5,7)-1]} ainda não fechou</b> — os dados vão só até o dia ${DIACORTE}.
    A barra dele está esmaecida, não disputa "melhor mês" e não entra na média. A coluna de variação corta
@@ -794,11 +837,12 @@ function pgMensal(){
 
 function pgCampanhas(){
  const R=(D.camp||[]).filter(r=>+r.spend>0||+r.ped_total>0);
- // periodo: a campanha tem janela propria (de..ate) — filtra por sobreposicao com o periodo
- const [pi,pf]=jan();
- const Rp=R.filter(r=>{ if(!r.de&&!r.ate)return true;
-   const de=String(r.de||'2026-01-01').slice(0,10), ate=String(r.ate||MAX).slice(0,10);
-   return de<=pf && ate>=pi;});
+ // GRAO DE DIA. A versao anterior filtrava por SOBREPOSICAO da janela de veiculacao e somava a
+ // campanha INTEIRA sempre que ela encostasse no periodo: numa leitura de 7 dias mostrava
+ // R$ 12.385 de gasto contra R$ 3.630 reais e CAC de R$ 179,50 — verde — onde o real era
+ // R$ 605,02. A tela dizia "escala" onde o dado dizia "pausa".
+ const [pi,pf0]=jf(jan()), pf=pf0;
+ const Rp=R.filter(r=>{const d=String(r.dia||'').slice(0,10); return d>=pi&&d<=pf});
  const nivel=S.cnivel||'campanha';
  const ag={};
  for(const r of Rp){
@@ -839,7 +883,9 @@ function pgCampanhas(){
  ];
  const T=TB(cols,rows,tot,false);
  const semVenda=rows.filter(r=>r.spend>300&&r.ped_total===0);
- const aviso = Rp.length<R.length?`<div class="al o">Mostrando <b>${Rp.length} de ${R.length}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} — filtrado pelo período <b>${DT(pi)} a ${DT(pf)}</b> (sobreposição com a janela de veiculação).</div>`:'';
+ // Rp agora e uma lista de DIAS de campanha, nao de campanhas — contar linhas aqui seria enganoso.
+ const nCamp=new Set(rows.map(r=>r.k)).size, nTot=new Set(R.map(r=>nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)')))).size;
+ const aviso = `<div class="al o">Mostrando <b>${nCamp} de ${nTot}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} com atividade entre <b>${DT(pi)} e ${DT(pf)}</b> — somando <b>só os dias dentro do período</b>, não a veiculação inteira.</div>`+avisoAberto();
  return `${aviso}<div class="sc"><div class="gr g6">
    <div class="cd"><div class="k">Gasto</div><div class="v">${R0(tot.spend)}</div><div class="c f">${rows.length} ${nivel==='campanha'?'campanhas':'conjuntos'}</div></div>
    <div class="cd"><div class="k">Clientes novos</div><div class="v">${IN(tot.ped_aquisicao)}</div></div>
@@ -854,7 +900,7 @@ function pgCampanhas(){
   ${semVenda.length?`<div class="al w"><b>${semVenda.length} ${nivel==='campanha'?'campanhas':'conjuntos'} com gasto acima de R$ 300 e zero pedido atribuído:</b>
    ${semVenda.slice(0,5).map(r=>r.k+' ('+R0(r.spend)+')').join(' · ')}. Pode ser campanha de topo de funil, ou UTM que não chegou.</div>`:''}
   <div class="sc"><div class="sch"><div><h2>Desempenho por ${nivel==='campanha'?'campanha':'conjunto de anúncio'}</h2>
-   <p>Histórico completo. Gasto agrupado por nome — se um nome tem mais de um id no Meta, aparece o selo.</p></div>
+   <p>Somado dia a dia dentro do período selecionado. Gasto agrupado por nome — se um nome tem mais de um id no Meta, aparece o selo.</p></div>
    <div class="chk">${[['campanha','Campanha'],['conjunto','Conjunto']].map(([k,n])=>`<button data-cnivel="${k}" class="${nivel===k?'on':''}">${n}</button>`).join('')}</div></div>
    <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>`;
 }
@@ -1173,7 +1219,7 @@ function pgConfig(){
 /* ==================== barra de filtros ==================== */
 function filtros(){
  const PER=[['hoje','Hoje'],['ontem','Ontem'],['7','Últimos 7 dias'],['30','Últimos 30 dias'],
-  ['mes','Este mês'],['mesant','Mês anterior'],['ano','Este ano'],['custom','Personalizado']];
+  ['mes','Este mês'],['mesant','Mês anterior'],['ano','Este ano'],['tudo','Todo o histórico'],['custom','Personalizado']];
  const CMP=[['prev','Período anterior'],['mesant','Mesmo período do mês anterior'],
   ['anoant','Mesmo período do ano anterior'],['none','Sem comparação']];
  const MOD=[['sintese','Síntese'],['first','First click'],['last','Last click'],['plataforma','Plataformas']];
