@@ -72,31 +72,11 @@ union all select 'falha', count(*)::int, round(sum(total)::numeric,2) from comme
 union all select 'voltou_apos_falha', count(*)::int, 0 from mens a
   where not exists(select 1 from mens b where b.k=a.k and b.mes=a.mes+interval '1 month')
     and exists(select 1 from mens c where c.k=a.k and c.mes>a.mes+interval '1 month')`,
-  am_dias: `with am as (select coalesce(cid,email) k,min(created_at) p from core.vw_app_pedido where categoria='amostra' group by 1),
-pr as (select coalesce(cid,email) k,min(created_at) p from core.vw_app_pedido where categoria<>'amostra' group by 1)
-select round(avg(extract(day from pr.p-am.p))) media,
- round(percentile_cont(0.5) within group (order by extract(day from pr.p-am.p))) mediana,
- count(*) n from am join pr using(k) where pr.p>am.p`,
-  am_mes: `with am as (select coalesce(cid,email) k,min(created_at) p from core.vw_app_pedido where categoria='amostra' group by 1),
-pr as (select coalesce(cid,email) k,min(created_at) p,(array_agg(categoria order by created_at))[1] cat
- from core.vw_app_pedido where categoria<>'amostra' group by 1)
-select to_char(date_trunc('month',am.p),'YYYY-MM') mes,count(*) amostras,
- sum((pr.k is not null)::int) conv, sum((pr.cat='novo_assinatura')::int) conv_assin
-from am left join pr on pr.k=am.k and pr.p>am.p group by 1 order by 1`,
   spend: `select dia,fonte,round(sum(custo)::numeric,2) custo,max(origem_do_custo) origem from core.vw_mvp_custo_dia where dia>='2026-01-01' group by 1,2`,
   saude: `select fonte,tipo,sla_horas,idade_horas,status,linhas from core.vw_pipeline_saude`,
   fontes: `select fonte_bruta,canal,subcanal,pago from core.fonte_canonica`,
   pcusto: `select sku,descricao,tipo_produto,custo_unitario,confianca from commerce.produto_custo`,
   params: `select chave,valor,unidade,observacao from commerce.parametros_financeiros`,
-  churn: `with mens as (select coalesce(cid,email) k, date_trunc('month',created_at)::date mes
-  from core.vw_app_pedido where categoria in ('recorrente','novo_assinatura','antigo_inicio_assinatura') group by 1,2),
-m as (select mes, count(distinct k) ativos from mens group by 1),
-d as (select a.mes, count(*) n from mens a
-  where not exists(select 1 from mens b where b.k=a.k and b.mes>a.mes)
-    and a.mes < (select max(mes) from mens) group by 1)
-select to_char(m.mes,'YYYY-MM') mes, m.ativos::int, coalesce(d.n,0)::int perdidos,
- round(100.0*coalesce(d.n,0)/m.ativos,1) churn_pct
-from m left join d on d.mes=m.mes where m.mes < (select max(mes) from mens) order by 1`,
   // GRAO DE DIA, nao de periodo. `vw_campanha_dia` (nome mentiroso) agrupa por campanha+conjunto
   // sem dia e expoe min(date_start)/max(date_stop); a tela filtrava por SOBREPOSICAO e somava a
   // campanha INTEIRA em qualquer janela que encostasse nela. Em 06/08/2026, numa leitura de 7 dias:
@@ -107,33 +87,23 @@ from m left join d on d.mes=m.mes where m.mes < (select max(mes) from mens) orde
  ped_aquisicao, rec_aquisicao, assin_novo, marg_total, marg_aquisicao
 from core.vw_campanha_dia_real
 where spend>0 or ped_total>0`,
-  sess: `select dia, canal, canal_aq, categoria, sessoes, dias, primeira_sessao, pedidos, receita
-from core.vw_sessoes_ate_compra`,
-  // Tempo entre etapas. Mediana e quartis, nunca so a media: a distribuicao tem cauda
-  // longa (conversao de amostra acontece entre 9 e 80 dias) e a media sozinha esconde isso.
-  // `nao_deram_o_passo` esta na view de proposito, para o numero nao parecer melhor do que e.
-  etapas: `select ord, etapa, pessoas, nao_deram_o_passo, p25_dias, mediana_dias, p75_dias,
- media_dias, minimo_dias, maximo_dias from core.vw_tempo_entre_etapas order by ord`,
   // PAYBACK REAL. cac_aprox = gasto do mes / clientes cuja 1a compra PAGA foi atribuida ao canal
   // naquele mes. Nao usa is_new_customer (aquele campo conta quem so tinha amostra e inflou
   // a contagem 156 vs 53 em julho, produzindo um CAC 5x otimista).
   payback: `select mes, canal, clientes, idade_dias, spend, cac_aprox,
  ltv_30, ltv_90, ltv_180, margem_180_por_cliente, margem_sobre_cac_180, payback_meses
 from core.vw_payback_coorte order by mes, canal`,
-  // Custo real por amostra: gasto das campanhas que ENTREGAM amostra (ped_amostra>aquisicao)
-  // dividido pelas amostras que elas entregaram. Substitui o R$ 9,32 hardcoded que era falso.
-  amcusto: `with t as (select to_char(dia,'YYYY-MM') mes, campanha, sum(spend) sp,
-   sum(coalesce(ped_amostra,0)) am, sum(coalesce(pedidos_aquisicao,0)) aq
-  from core.vw_criativo_dia group by 1,2)
-select mes, round((sum(sp) filter (where am>aq))::numeric,2) spend_am,
- coalesce(sum(am) filter (where am>aq),0)::int am_atrib,
- round((sum(sp) filter (where am>aq)/nullif(sum(am) filter (where am>aq),0))::numeric,2) custo_por_amostra
-from t group by 1 order by 1`,
   // --- Semanal / realizado x projetado (04/08/2026) ---
   k7:   `select * from core.vw_kpi_7d where ate >= current_date - 90 order by ate`,
   ksem: `select * from core.vw_kpi_semana where semana >= current_date - 120 order by semana`,
   kmes: `select * from core.vw_kpi_mes where mes >= '2026-05-01' order by mes`,
   plano:`select * from core.plano_mes order by mes`,
+  // Objetivo DECLARADO do conjunto, com vigencia — intencao nao se deduz do resultado.
+  // Conjunto de amostra e julgado por custo por amostra, nunca por CAC: o CJ_kit_exp aparecia
+  // com CAC de R$ 940 pintado de vermelho e nunca tentou comprar cliente direto.
+  // DDL e a classificacao em cells-infra/fixes/2026-08-07-campanha-objetivo.sql.
+  objetivo: `select dia, conjunto, objetivo, classificado
+ from core.vw_campanha_objetivo_dia where dia >= current_date - 90`,
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,

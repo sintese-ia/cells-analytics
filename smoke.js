@@ -82,7 +82,7 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
   catch (e) { console.error('FALHA: nao consegui alcancar o estado S: ' + e.message); process.exit(1); }
   ctx.S = ctx.__S;
 
-  const PGS = ['resumo','atribuicao','tipo','mensal','semanal','midia','campanhas','cohorts','jornadas','definicoes','config'];
+  const PGS = ['resumo','atribuicao','tipo','mensal','semanal','midia','campanhas','definicoes','config'];
   const FN = {};
   for (const n of Object.getOwnPropertyNames(ctx)) if (/^pg[A-Z]/.test(n) && typeof ctx[n] === 'function') FN[n] = ctx[n];
   console.log('ok  ' + Object.keys(FN).length + ' funcoes de pagina encontradas: ' + Object.keys(FN).join(', '));
@@ -101,6 +101,12 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
   CEN.push({ can: 'canal_que_nao_existe' });          // caso vazio
   CEN.push({ cat: 'categoria_inexistente' });          // caso vazio
   CEN.push({ can: canais[0], gru: 'Pago', cat: cats[0], per: '7d' });
+  // Baldes de negocio (amostra/compras/mrr). MRR nas telas de midia devolve so um aviso, e
+  // 'amostra' restringe a poucos conjuntos — os dois sao caminhos de conjunto quase vazio,
+  // que e exatamente onde divisao por zero costuma escapar.
+  CEN.push({ bal: 'amostra' }, { bal: 'compras' }, { bal: 'mrr' });
+  CEN.push({ bal: 'amostra', per: '7d' }, { bal: 'compras', can: canais[0] });
+  CEN.push({ bal: 'balde_inexistente' });              // caso vazio
 
   let n = 0, falhas = 0;
   for (const cen of CEN) {

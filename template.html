@@ -168,6 +168,43 @@ const CAT={amostra:{n:'Amostra',cor:'#C9C9C4'},novo_avulso:{n:'Novos — compra 
  antigo_inicio_assinatura:{n:'Antigos — início de assinatura',cor:'#F79767'},
  recorrente:{n:'Assinantes recorrentes',cor:'#F7C9AC'}};
 const ORD=['amostra','novo_avulso','novo_assinatura','antigo_avulso','antigo_inicio_assinatura','recorrente'];
+
+// BALDES — a camada de negocio acima das 6 categorias tecnicas. Sao exclusivos e somam o
+// faturamento total. COMPRAS e "A CONTA" (novos + recompra + novos assinantes), que e sobre o
+// que ROAS e CAC sao calculados; amostra e MRR aparecem, mas FORA da conta. Ver
+// cells-infra/camada-semantica.md. MRR e renovacao de assinante de mes anterior — por definicao
+// nao tem campanha, entao a visao de midia declara isso em vez de mostrar tabela vazia.
+const BALDE={
+ amostra:{n:'Amostras', cats:['amostra'],
+   d:'Pedido só de amostra. Entra no faturamento total, mas nunca no ROAS nem no CAC.'},
+ compras:{n:'Compras',  cats:['novo_avulso','antigo_avulso','novo_assinatura','antigo_inicio_assinatura'],
+   d:'A CONTA: novos + recompra + novos assinantes. É sobre ela que ROAS e CAC são calculados.'},
+ mrr:{n:'MRR',          cats:['recorrente'],
+   d:'Renovação de assinante de mês anterior. Não tem campanha — a mídia deste mês não a causou.'}
+};
+const balCats=b=>BALDE[b]?BALDE[b].cats:null;
+
+// Objetivo DECLARADO por (dia, conjunto). Default 'venda' para quem nao foi classificado — o
+// default nunca esconde nada. Ver cells-infra/fixes/2026-08-07-campanha-objetivo.sql.
+const OBJ={}; (D.objetivo||[]).forEach(r=>{OBJ[String(r.dia).slice(0,10)+'|'+r.conjunto]=r.objetivo});
+const objDe=(dia,conj)=>OBJ[String(dia).slice(0,10)+'|'+conj]||'venda';
+// A visao de midia segue o balde. Em COMPRAS, conjunto cujo objetivo e amostra sai da tabela:
+// o CAC dele nao e metrica valida — o CJ_kit_exp entregou 85 amostras e 2 clientes diretos, e
+// aparecia com CAC de R$ 940 pintado de vermelho por uma conta que ele nunca tentou fazer.
+// 'topo' NUNCA some: sumir com o gasto e pior que mostra-lo marcado.
+const passaObj=(dia,conj)=>{ if(!S.bal||S.bal==='mrr')return true;
+ const o=objDe(dia,conj);
+ return S.bal==='amostra' ? o==='amostra' : o!=='amostra'; };
+const avisoMRR=`<div class="al w"><b>MRR não tem campanha.</b> É renovação de assinante de mês
+ anterior — a mídia deste mês não a causou, então não existe conjunto para atribuir. Veja o MRR
+ em Resumo, Tipo de cliente ou Semanal.</div>`;
+const avisoObj=b=>b==='amostra'
+ ? `<div class="al o"><b>Só conjuntos com objetivo declarado de amostra.</b> Aqui a métrica que vale é
+    <b>custo por amostra</b>, não CAC — esses conjuntos nunca tentaram comprar cliente direto.</div>`
+ : b==='compras'
+ ? `<div class="al o"><b>Conjuntos de amostra estão fora.</b> Sobram os de venda e os de topo de funil.
+    Objetivo e vigência em <code>core.campanha_objetivo</code> — os W1 valem como amostra até 31/07 e
+    como venda a partir de 01/08, quando a oferta trocou.</div>` : '';
 // google_ads x google_organico: o utm_source nao separava (o sufixo `g` do feed do Merchant
 // Center serve listagem gratuita E Shopping pago). Quem separa e o gclid. `google` fica no mapa
 // por seguranca, para dado antigo nao cair em "Outros".
@@ -200,7 +237,7 @@ const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(MAX)} ainda não fe
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
-const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'spend',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',eixo:'pedido',rec:'liq',
+const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'spend',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',eixo:'pedido',rec:'liq',
  gran:'dia',ind:'liq',srt:{},oc:{},mais:false,d1:'',d2:''};
 function addD(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function jan(){
@@ -250,6 +287,7 @@ function agg(j,{canalView=false}={}){
   if(S.can&&c!==S.can)continue;
   if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
   if(S.cat&&r.categoria!==S.cat)continue;
+  if(S.bal&&!balCats(S.bal).includes(r.categoria))continue;
   // REGRA: na visão por canal (eixo=pedido) a recorrente NAO entra —
   // atribuir renovação a canal não faz sentido, o canal não causou a renovação.
   if(canalView&&S.eixo==='pedido'&&r.categoria==='recorrente')continue;
@@ -286,6 +324,7 @@ function serie(j,g,diaMax){
   if(diaMax&&+r.dia.slice(8,10)>diaMax)continue;
   const c=cCan(r);
   if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
+  if(S.bal&&!balCats(S.bal).includes(r.categoria))continue;
   const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
   o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos;
   if(r.ks)for(const x of r.ks)o.ks.add(x)}
@@ -408,8 +447,6 @@ const PGS={
  semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
  midia:{t:'Mídia',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
  campanhas:{t:'Campanhas',ic:'M3 11l19-7-7 19-3-8-9-4z'},
- cohorts:{t:'Cohorts',ic:'M4 6h16M4 12h11M4 18h6'},
- jornadas:{t:'Jornadas',ic:'M4 17h4l3-10 3 6 2-4h4'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
 };
@@ -510,6 +547,7 @@ function pgMidia(){
  const raiz=new Map(); const q=(S.gbusca||'').toLowerCase();
  for(const r of R){
    if(r.dia<de||r.dia>maxd) continue;
+   if(!passaObj(r.dia,r.conjunto)) continue;
    if(q && ![r.campanha,r.conjunto,r.anuncio].some(x=>String(x||'').toLowerCase().includes(q))) continue;
    const n1=raiz.get(r.canal)||{n:r.canal,lv:1,a:Z0(),f:new Map()}; raiz.set(r.canal,n1); som(n1.a,r);
    const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); som(n2.a,r);
@@ -567,7 +605,8 @@ function pgMidia(){
  const canais=[...raiz.keys()].sort();
  const selCanal=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
    +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
- return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}
+ if(S.bal==='mrr') return avisoMRR;
+ return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}${avisoObj(S.bal)}
  <div class="sc"><div class="sch"><div><h2>Grid de mídia</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>. Colunas em cinza são reportadas pelo
   Meta (pixel da plataforma); as demais são pedido real medido no banco.</p></div>
@@ -836,13 +875,14 @@ function pgMensal(){
 }
 
 function pgCampanhas(){
+ if(S.bal==='mrr') return avisoMRR;
  const R=(D.camp||[]).filter(r=>+r.spend>0||+r.ped_total>0);
  // GRAO DE DIA. A versao anterior filtrava por SOBREPOSICAO da janela de veiculacao e somava a
  // campanha INTEIRA sempre que ela encostasse no periodo: numa leitura de 7 dias mostrava
  // R$ 12.385 de gasto contra R$ 3.630 reais e CAC de R$ 179,50 — verde — onde o real era
  // R$ 605,02. A tela dizia "escala" onde o dado dizia "pausa".
  const [pi,pf0]=jf(jan()), pf=pf0;
- const Rp=R.filter(r=>{const d=String(r.dia||'').slice(0,10); return d>=pi&&d<=pf});
+ const Rp=R.filter(r=>{const d=String(r.dia||'').slice(0,10); return d>=pi&&d<=pf&&passaObj(d,r.conjunto)});
  const nivel=S.cnivel||'campanha';
  const ag={};
  for(const r of Rp){
@@ -854,13 +894,16 @@ function pgCampanhas(){
     'rec_amostra','rec_total','marg_total','marg_aquisicao','assin_novo','compras_plat','receita_plat'])
    o[f]+= +(r[f]||0);
   o.ids=Math.max(o.ids,+(r.ids_no_nome||0));
+  (o.objs||(o.objs=new Set())).add(objDe(r.dia,r.conjunto));
  }
  const rows=Object.values(ag).sort((a,b)=>b.spend-a.spend);
  const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},{});
  const mxs=Math.max(...rows.map(r=>r.spend),1);
  const cols=[
   {k:'n',t:nivel==='campanha'?'Campanha':'Campanha › Conjunto',l:1,fx:1,
-   f:r=>r.k+(r.ids>1?' <span class="pl r">'+r.ids+' ids</span>':''),raw:r=>r.k,tf:()=>'<b>Total</b>'},
+   f:r=>{const os=[...(r.objs||[])].filter(x=>x!=='venda');
+    const sel=os.map(o=>`<span class="pl ${o==='amostra'?'i':'g'}" title="objetivo declarado em core.campanha_objetivo">${o}</span>`).join(' ');
+    return r.k+(r.ids>1?' <span class="pl r">'+r.ids+' ids</span>':'')+(sel?' '+sel:'')},raw:r=>r.k,tf:()=>'<b>Total</b>'},
   {k:'s',t:'Gasto',f:r=>R0(r.spend)+` <span class="br2"><i style="width:${r.spend/mxs*100}%"></i></span>`,raw:r=>r.spend,tf:t=>R0(t.spend)},
   {k:'aq',t:'Clientes novos',tip:'Cliente novo em compra cheia. Amostra tem coluna própria.',f:r=>IN(r.ped_aquisicao),raw:r=>r.ped_aquisicao,tf:t=>IN(t.ped_aquisicao)},
   {k:'cac',t:'CAC de cliente',f:r=>{const v=dv(r.spend,r.ped_aquisicao);
@@ -885,7 +928,7 @@ function pgCampanhas(){
  const semVenda=rows.filter(r=>r.spend>300&&r.ped_total===0);
  // Rp agora e uma lista de DIAS de campanha, nao de campanhas — contar linhas aqui seria enganoso.
  const nCamp=new Set(rows.map(r=>r.k)).size, nTot=new Set(R.map(r=>nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)')))).size;
- const aviso = `<div class="al o">Mostrando <b>${nCamp} de ${nTot}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} com atividade entre <b>${DT(pi)} e ${DT(pf)}</b> — somando <b>só os dias dentro do período</b>, não a veiculação inteira.</div>`+avisoAberto();
+ const aviso = avisoObj(S.bal)+`<div class="al o">Mostrando <b>${nCamp} de ${nTot}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} com atividade entre <b>${DT(pi)} e ${DT(pf)}</b> — somando <b>só os dias dentro do período</b>, não a veiculação inteira.</div>`+avisoAberto();
  return `${aviso}<div class="sc"><div class="gr g6">
    <div class="cd"><div class="k">Gasto</div><div class="v">${R0(tot.spend)}</div><div class="c f">${rows.length} ${nivel==='campanha'?'campanhas':'conjuntos'}</div></div>
    <div class="cd"><div class="k">Clientes novos</div><div class="v">${IN(tot.ped_aquisicao)}</div></div>
@@ -903,246 +946,6 @@ function pgCampanhas(){
    <p>Somado dia a dia dentro do período selecionado. Gasto agrupado por nome — se um nome tem mais de um id no Meta, aparece o selo.</p></div>
    <div class="chk">${[['campanha','Campanha'],['conjunto','Conjunto']].map(([k,n])=>`<button data-cnivel="${k}" class="${nivel===k?'on':''}">${n}</button>`).join('')}</div></div>
    <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>`;
-}
-
-function pgCohorts(){
- const ab=S.cab||'receita';
- const cb={}; D.cbase.forEach(r=>{const k=r.co; (cb[k]||(cb[k]={co:k,cli:0,idade:0,canais:{}}));
-  cb[k].cli+=r.cli; cb[k].idade=Math.max(cb[k].idade,+r.idade); cb[k].canais[r.canal]=(cb[k].canais[r.canal]||0)+r.cli});
- const filtCanal=S.can;
- const filtGrupo=S.gru, filtCat=S.cat;
- const H={};
- D.heat.forEach(r=>{ if(filtCanal&&r.canal!==filtCanal)return;
-  if(filtGrupo&&(GRUPO[r.canal]||'Outros')!==filtGrupo)return;
-  if(filtCat&&r.cat1!==filtCat)return;
-  const k=r.co+'|'+r.mn; (H[k]||(H[k]={rec:0,cli:0,ped:0})); H[k].rec+=(+r.rec); H[k].cli=Math.max(H[k].cli,+r.cli); H[k].ped+=(+r.ped)});
- const cos=[...new Set(D.heat.filter(r=>(!filtCanal||r.canal===filtCanal)
-  &&(!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo)&&(!filtCat||r.cat1===filtCat)).map(r=>r.co))].sort();
- const MN=[0,1,2,3,4,5,6];
- const base={}; cos.forEach(c=>{base[c]=D.cbase.filter(r=>r.co===c&&(!filtCanal||r.canal===filtCanal)
-  &&(!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo)&&(!filtCat||r.cat1===filtCat)).reduce((a,r)=>a+r.cli,0)});
- // acumulado
- const acc={}; cos.forEach(c=>{let s=0; MN.forEach(n=>{s+=(H[c+'|'+n]?.rec||0); acc[c+'|'+n]=s})});
- const vals=cos.flatMap(c=>MN.map(n=>{
-  const b=base[c]||1;
-  if(ab==='receita')return acc[c+'|'+n]||0;
-  if(ab==='ltv')return (acc[c+'|'+n]||0)/b;
-  if(ab==='recompra')return (H[c+'|'+n]?.cli||0)/b*100;
-  return 0})).filter(v=>v>0);
- const mxv=Math.max(...vals,1);
- const fmtC=v=>ab==='recompra'?PC(v,0):ab==='ltv'?R0(v):R0(v);
- const hm=!cos.length?'<div class="emp">Nenhum cohort para os filtros atuais.</div>':`<div class="tw"><table class="hm"><thead><tr><th class="l fx">Cohort</th><th>Clientes</th>${MN.map(n=>`<th>Mês ${n}</th>`).join('')}</tr></thead><tbody>${
-  cos.map(c=>{const b=base[c]||0;
-   return `<tr><td class="l fx">${MSL[+c.slice(5,7)-1]}${b&&(cb[c]?.idade<120)?' <span class="pl i">jovem</span>':''}</td>
-   <td style="font-weight:650">${IN(b)}</td>${MN.map(n=>{
-    const has=H[c+'|'+n];
-    const v=ab==='receita'?(acc[c+'|'+n]||0):ab==='ltv'?((acc[c+'|'+n]||0)/(b||1)):((has?.cli||0)/(b||1)*100);
-    if(!has&&n>0)return '<td class="na">—</td>';
-    const int2=Math.min(.62,v/mxv*.62);
-    return `<td style="background:rgba(244,94,26,${int2})">${fmtC(v)}</td>`}).join('')}</tr>`}).join('')}</tbody></table></div>`;
- // amostras. CUSTO POR AMOSTRA VEM DO BANCO (D.amcusto), nunca hardcoded:
- // o valor antigo (R$ 9,32) saiu do bug do is_new_customer e era ~14x menor que o real.
- const amM=D.am_mes, amD=D.am_dias[0]||{};
- const CUSTO=12,TX=.127,PRECO=37.9;
- const CPA={}; (D.amcusto||[]).forEach(r=>{if(r.custo_por_amostra!=null)CPA[r.mes]=+r.custo_por_amostra});
- const cpaMes=m=>CPA[m]??null;
- const totAm=amM.reduce((a,r)=>a+ +r.amostras,0), totCv=amM.reduce((a,r)=>a+ +r.conv,0);
- const totSpAm=(D.amcusto||[]).reduce((a,r)=>a+(+r.spend_am||0),0);
- const totAmAtr=(D.amcusto||[]).reduce((a,r)=>a+(+r.am_atrib||0),0);
- const cpaGeral=dv(totSpAm,totAmAtr);
- const folga=cpaGeral==null?null:PRECO-CUSTO-PRECO*TX-cpaGeral;
- const TA=TB([
-  {k:'m',t:'Mês da amostra',l:1,fx:1,f:r=>MSL[+String(r.mes).slice(5,7)-1],raw:r=>r.mes},
-  {k:'a',t:'Amostras distribuídas',f:r=>IN(+r.amostras),raw:r=>+r.amostras,tf:t=>IN(totAm)},
-  {k:'c',t:'Converteram',f:r=>IN(+r.conv),raw:r=>+r.conv,tf:()=>IN(totCv)},
-  {k:'ca',t:'Convert. em assinatura',f:r=>IN(+r.conv_assin),raw:r=>+r.conv_assin},
-  {k:'t',t:'Taxa de conversão',f:r=>{const v=dv(+r.conv,+r.amostras);
-    return v==null?'—':`<b style="color:${v>=.15?'var(--vd)':'var(--pt)'}">${PC(v*100)}</b>`},raw:r=>dv(+r.conv,+r.amostras)??-1,tf:()=>PC(dv(totCv,totAm)*100)},
-  {k:'cu',t:'Mídia por amostra',f:r=>{const c=cpaMes(r.mes);return c==null?'<span class="na">sem gasto atrib.</span>':R$(c)},raw:r=>cpaMes(r.mes)??-1,tf:()=>cpaGeral==null?'—':R$(cpaGeral)},
-  {k:'cu2',t:'Custo total da amostra',f:r=>{const c=cpaMes(r.mes);return c==null?'<span class="na">—</span>':R$(CUSTO+PRECO*TX+c)},raw:r=>{const c=cpaMes(r.mes);return c==null?-1:CUSTO+PRECO*TX+c}},
-  {k:'cc',t:'Custo por convertido',f:r=>{const c=cpaMes(r.mes);const v=c==null?null:dv((CUSTO+PRECO*TX+c)*(+r.amostras),+r.conv);
-    return v==null?'<span class="na">—</span>':`<b style="color:var(--pt)">${R$(v)}</b>`},
-   raw:r=>{const c=cpaMes(r.mes);return c==null?1e9:(dv((CUSTO+PRECO*TX+c)*(+r.amostras),+r.conv)??1e9)}}
- ],amM,{});
- // PAYBACK: CAC real do mes contra margem de contribuicao acumulada em 180 dias.
- const pbAll=(D.payback||[]).filter(r=>!filtCanal||r.canal===filtCanal)
-   .filter(r=>!filtGrupo||(GRUPO[r.canal]||'Outros')===filtGrupo);
- const pbCom=pbAll.filter(r=>r.cac_aprox!=null&&+r.cac_aprox>0);
- const pbSp=pbCom.reduce((a,r)=>a+ +r.spend,0), pbCli=pbCom.reduce((a,r)=>a+ +r.clientes,0);
- const pbMg=pbCom.reduce((a,r)=>a+ (+r.margem_180_por_cliente||0)*(+r.clientes),0);
- const pbRaz=dv(pbMg,pbSp);
- const TP=TB([
-  {k:'m',t:'Cohort',l:1,fx:1,f:r=>`${MSL[+String(r.mes).slice(5,7)-1]} <span class="c f">${String(r.mes).slice(0,4)}</span>`,raw:r=>r.mes},
-  {k:'ca',t:'Canal',l:1,f:r=>r.canal,raw:r=>r.canal},
-  {k:'cl',t:'Clientes pagantes',f:r=>IN(+r.clientes),raw:r=>+r.clientes,tf:()=>IN(pbCli)},
-  {k:'id',t:'Idade',f:r=>`${IN(+r.idade_dias)}d${+r.idade_dias<180?' <span class="pl i">imaturo</span>':''}`,raw:r=>+r.idade_dias},
-  {k:'sp',t:'Mídia no mês',f:r=>r.spend==null?'<span class="na">—</span>':R0(+r.spend),raw:r=>+r.spend||-1,tf:()=>R0(pbSp)},
-  {k:'cc',t:'CAC',f:r=>r.cac_aprox==null?'<span class="na">sem custo</span>':R$(+r.cac_aprox),raw:r=>+r.cac_aprox??-1,tf:()=>R$(dv(pbSp,pbCli))},
-  {k:'l1',t:'LTV 180d',f:r=>R$(+r.ltv_180),raw:r=>+r.ltv_180},
-  {k:'mg',t:'Margem 180d/cliente',f:r=>R$(+r.margem_180_por_cliente),raw:r=>+r.margem_180_por_cliente,tf:()=>R$(dv(pbMg,pbCli))},
-  {k:'rz',t:'Margem ÷ CAC',f:r=>{const v=r.margem_sobre_cac_180;
-    return v==null?'<span class="na">—</span>':`<b style="color:${+v>=1?'var(--vd)':'var(--pt)'}">${(+v).toFixed(2).replace('.',',')}x</b>`},
-   raw:r=>r.margem_sobre_cac_180==null?-1:+r.margem_sobre_cac_180,
-   tf:()=>pbRaz==null?'—':`<b style="color:${pbRaz>=1?'var(--vd)':'var(--pt)'}">${pbRaz.toFixed(2).replace('.',',')}x</b>`}
- ],pbAll,{});
- const sel=cos.length?cos[cos.length-1]:null;
- const selB=sel?(base[sel]||0):0, selAcc=sel?(acc[sel+'|6']||acc[sel+'|3']||0):0;
- return `<div class="sc"><div class="sch"><div><h2>Cohorts por mês da primeira compra paga</h2>
-  <p>O cohort é definido pelo mês da primeira compra, então <b>o seletor de período não se aplica</b> —
-  canal, grupo e tipo da primeira compra sim. Comparar cohort de dois meses com cohort de nove meses é a armadilha clássica — a etiqueta <span class="pl i">jovem</span> marca quem tem menos de 120 dias. Amostra não abre cohort de cliente pagante: tem visão própria abaixo.</p></div>
-  <div class="chk">${[['receita','Receita acumulada'],['ltv','LTV por cliente'],['recompra','Recompra %']].map(([k,n])=>`<button data-cab="${k}" class="${ab===k?'on':''}">${n}</button>`).join('')}</div></div>
-  <div class="pn">${hm}</div>
-  ${filtCanal?`<div class="al o" style="margin-top:8px">Filtrado por canal de aquisição <b>${filtCanal}</b>.</div>`:''}</div>
- ${sel?`<div class="sc"><div class="sch"><div><h2>Cohort selecionado — ${MSL[+sel.slice(5,7)-1]}</h2></div></div>
-  <div class="gr g6">
-   <div class="cd"><div class="k">Clientes adquiridos</div><div class="v">${IN(selB)}</div></div>
-   <div class="cd"><div class="k">Receita acumulada</div><div class="v">${R0(selAcc)}</div></div>
-   <div class="cd"><div class="k">LTV por cliente</div><div class="v">${R$(dv(selAcc,selB))}</div></div>
-   <div class="cd"><div class="k">Margem a 60%</div><div class="v">${R$(dv(selAcc,selB)*0.6)}</div></div>
-   <div class="cd"><div class="k">Idade do cohort</div><div class="v">${IN(cb[sel]?.idade)}d</div></div>
-   ${(()=>{const p=pbAll.find(r=>r.mes&&String(r.mes).slice(0,7)===sel&&(!filtCanal||r.canal===filtCanal));
-     const v=p&&p.margem_sobre_cac_180!=null?+p.margem_sobre_cac_180:null;
-     return `<div class="cd"><div class="k">Margem ÷ CAC (180d)</div><div class="v" style="${v!=null?`color:${v>=1?'var(--vd)':'var(--pt)'}`:''}">${v!=null?v.toFixed(2).replace('.',',')+'x':'<span class="na" style="font-size:15px">sem custo do canal</span>'}</div><div class="c f">${v!=null?(v>=1?'se paga em 180 dias':'não se paga em 180 dias'):'canal sem gasto registrado'}</div></div>`})()}
-  </div></div>`:'<div class="al w">Nenhum cohort para os filtros atuais.</div>'}
- <div class="sc"><div class="sch"><div><h2>Payback: o cohort devolve o que custou?</h2>
-  <p>A pergunta que decide se pode escalar mídia. <b>CAC</b> = mídia do mês ÷ clientes cuja <b>primeira compra paga</b> foi atribuída ao canal naquele mês — amostra não conta como cliente. <b>Margem ÷ CAC</b> abaixo de 1,00 significa que o cohort ainda não devolveu a mídia que custou.</p></div></div>
-  <div class="pn">${pbAll.length?TP.html:'<div class="emp">Nenhum cohort com custo para os filtros atuais.</div>'}</div>
-  ${pbRaz!=null?`<div class="al ${pbRaz>=1?'o':'c'}" style="margin-top:8px"><b>${pbRaz>=1?'Paga.':'Não paga.'}</b>
-   ${R0(pbSp)} de mídia geraram ${IN(pbCli)} clientes pagantes, que devolveram ${R$(dv(pbMg,pbCli))} de margem de contribuição por cliente em 180 dias contra um CAC de ${R$(dv(pbSp,pbCli))} — <b>${pbRaz.toFixed(2).replace('.',',')}x</b>.
-   ${pbRaz<1?'E não há cauda longa para resgatar: entre os clientes com mais de 180 dias, a média é de 1,67 pedidos e 1,5 mês de vida, então 180 dias já é praticamente o ciclo inteiro.':''}</div>`:''}
-  <div class="al w" style="margin-top:8px"><b>Como ler as lacunas.</b> <b>“sem custo” em canal orgânico não é dado faltando</b> — <b>google_organico</b>, direct e instagram não têm mídia por definição, então não têm CAC. O que fica de fora é o custo de <b>influenciador, nutricionista e evento</b>, que não passa por plataforma e não está no banco. Margem aqui é <b>contribuição</b> (receita − CMV − taxas): não inclui custo fixo, salário nem frete real. Cohort marcado <span class="pl i">imaturo</span> tem menos de 180 dias e a janela ainda não fechou, então a razão é piso, não veredito.</div></div>
- <div class="sc"><div class="sch"><div><h2>Cohort de amostras</h2>
-  <p>Baseado no mês em que a pessoa recebeu a amostra. Amostra não é cliente pagante — o que importa é quanto dela converte, e a que custo.</p></div></div>
-  <div class="pn">${TA.html}</div>
-  <div class="al w" style="margin-top:8px">Tempo até a primeira compra: média de <b>${IN(+amD.media)} dias</b>, mediana de <b>${IN(+amD.mediana)} dias</b> (n=${IN(+amD.n)}). Só o cohort de <b>março</b> está maduro — e ele já havia convergido no dia 90.</div>
-  ${folga!=null?`<div class="al ${folga>0?'o':'c'}"><b>Unidade econômica da amostra:</b> preço ${R$(PRECO)} − CMV ${R$(CUSTO)} − taxas ${R$(PRECO*TX)} − mídia ${R$(cpaGeral)} = <b>${folga>0?'folga':'prejuízo'} de ${R$(Math.abs(folga))}</b> por amostra${folga<=0?', antes do frete':''}.
-   ${totCv&&totAm?`Como só <b>${PC(dv(totCv,totAm)*100)}</b> converte, cada cliente pagante conquistado por essa rota custa <b>${R$(dv((CUSTO+PRECO*TX+cpaGeral)*totAm,totCv))}</b>.`:''}
-   O frete observado no Bling vai de R$ 7,45 a R$ 14,74 e <b>não está no banco</b>.</div>`:''}
-  <div class="al w"><b>Não existe conversão escondida no clube do Woo:</b> dos 150 compradores de amostra, 1 aparece no WooCommerce e 0 entraram depois da amostra. A rota de saída é o Shopify.</div></div>`;
-}
-
-function pgJornadas(){
-
- const SS=(D.sess||[]).filter(r=>inP(String(r.dia).slice(0,10),jan())
-   && (!S.can||r.canal===S.can) && (!S.cat||r.categoria===S.cat)
-   && (!S.gru||(GRUPO[r.canal]||'Outros')===S.gru));
- const faixa=n=>n<=1?'1 sessão':n===2?'2 sessões':n<=3?'3 sessões':n<=5?'4-5 sessões':n<=10?'6-10 sessões':'11+ sessões';
- const ordF=['1 sessão','2 sessões','3 sessões','4-5 sessões','6-10 sessões','11+ sessões'];
- const fx={}; let totP=0, somaS=0, somaD=0;
- for(const r of SS){const k=faixa(+r.sessoes); (fx[k]||(fx[k]={k,ped:0,rec:0,dias:0}));
-   fx[k].ped+=+r.pedidos; fx[k].rec+=+r.receita; fx[k].dias+=(+r.dias)*(+r.pedidos);
-   totP+=+r.pedidos; somaS+=(+r.sessoes)*(+r.pedidos); somaD+=(+r.dias)*(+r.pedidos)}
- const mxF=Math.max(...Object.values(fx).map(f=>f.ped),1);
- const porCanal={};
- for(const r of SS){const o=porCanal[r.canal]||(porCanal[r.canal]={canal:r.canal,ped:0,s:0,d:0});
-   o.ped+=+r.pedidos; o.s+=(+r.sessoes)*(+r.pedidos); o.d+=(+r.dias)*(+r.pedidos)}
- const canRows=Object.values(porCanal).filter(o=>o.ped>=3).sort((a,b)=>b.ped-a.ped);
- const TS=TB([
-   {k:'c',t:'Canal',l:1,fx:1,f:r=>r.canal,raw:r=>r.canal,tf:()=>'Média geral'},
-   {k:'p',t:'Pedidos',f:r=>IN(r.ped),raw:r=>r.ped,tf:()=>IN(totP)},
-   {k:'s',t:'Sessões até comprar',f:r=>nf(r.s/r.ped,2),raw:r=>r.s/r.ped,tf:()=>nf(somaS/(totP||1),2)},
-   {k:'d',t:'Dias até comprar',f:r=>nf(r.d/r.ped,1),raw:r=>r.d/r.ped,tf:()=>nf(somaD/(totP||1),1)}
- ],canRows,{});
- const blocoSess = SS.length ? `<div class="sc"><div class="sch"><div><h2>Sessões até a compra</h2>
-   <p>Quantas visitas a pessoa fez antes de comprar, na janela de 45 dias do modelo de atribuição.
-   Disponível só onde a origem foi <b>medida por sessão</b> — em landing, herdada ou direct não existe contagem confiável.</p></div></div>
-   <div class="gr g6">
-     <div class="cd"><div class="k">Média de sessões</div><div class="v">${nf(somaS/(totP||1),2)}</div><div class="c f">${IN(totP)} pedidos medidos</div></div>
-     <div class="cd"><div class="k">Média de dias</div><div class="v">${nf(somaD/(totP||1),1)}</div><div class="c f">da 1ª visita à compra</div></div>
-     <div class="cd"><div class="k">Comprou na 1ª visita</div><div class="v">${PC(dv(fx['1 sessão']?.ped||0,totP)*100)}</div><div class="c f">${IN(fx['1 sessão']?.ped||0)} pedidos</div></div>
-     <div class="cd"><div class="k">Precisou de 4+</div><div class="v">${PC(dv((fx['4-5 sessões']?.ped||0)+(fx['6-10 sessões']?.ped||0)+(fx['11+ sessões']?.ped||0),totP)*100)}</div></div>
-   </div>
-   <div class="pn"><div class="pnb"><div class="fn">${ordF.filter(k=>fx[k]).map(k=>`<div class="fnr">
-     <div class="fnb ${k==='1 sessão'?'lj':''}" style="width:${Math.max(56,fx[k].ped/mxF*300)}px">${IN(fx[k].ped)}</div>
-     <div class="fnl">${k} · <b>${PC(fx[k].ped/totP*100)}</b> · ${R0(fx[k].rec)} · ${nf(fx[k].dias/fx[k].ped,1)} dias em média</div>
-   </div>`).join('')}</div></div></div>
-   <div class="pn" style="margin-top:10px"><div class="pnh"><h3>Por canal</h3></div>${TS.html}</div></div>` : '';
- const j={}; D.jor.forEach(x=>j[x.e]={n:+x.n,v:+x.v});
- const F=(t,et,tot)=>`<div class="fnr"><div class="fnb ${et.cor||''}" style="width:${Math.max(56,(et.n/(tot||1))*300)}px">${IN(et.n)}</div>
-  <div class="fnl">${t}${tot?` · <b>${PC(et.n/tot*100)}</b>`:''}</div></div>`;
- const jAm=`<div class="fn">
-  ${F('Receberam amostra',{n:j.am_total?.n||0},null)}
-  ${F('Ainda sem compra paga',{n:j.am_sem?.n||0,cor:'g'},j.am_total?.n)}
-  ${F('→ primeira compra avulsa',{n:j.am_avulso?.n||0},j.am_total?.n)}
-  ${F('→ primeira compra por assinatura',{n:j.am_assin?.n||0,cor:'lj'},j.am_total?.n)}</div>`;
- const jAv=`<div class="fn">
-  ${F('Primeira compra avulsa',{n:j.p1_avulsa?.n||0},null)}
-  ${F('Sem recompra',{n:j.p1_sem_recompra?.n||0,cor:'g'},j.p1_avulsa?.n)}
-  ${F('→ segunda compra avulsa',{n:j.p1_2a_avulsa?.n||0},j.p1_avulsa?.n)}
-  ${F('→ início de assinatura',{n:j.p1_para_assin?.n||0,cor:'lj'},j.p1_avulsa?.n)}</div>`;
- // sankey simplificado: amostra -> compra -> assinatura -> renovacao
- const W=1000,H=250;
- const nodes=[
-  {x:20,y:30,h:100,lb:'Amostra',n:j.am_total?.n||0,c:'#C9C9C4'},
-  {x:20,y:150,h:80,lb:'1ª compra avulsa',n:j.p1_avulsa?.n||0,c:'#111111'},
-  {x:480,y:30,h:60,lb:'Sem compra',n:j.am_sem?.n||0,c:'#C9C9C4'},
-  {x:480,y:110,h:60,lb:'Comprou',n:(j.am_avulso?.n||0)+(j.am_assin?.n||0)+(j.p1_avulsa?.n||0),c:'#111111'},
-  {x:480,y:190,h:50,lb:'Assinou',n:j.assin_ini_total?.n||0,c:'#F45E1A'}
- ];
- const mxn=Math.max(...nodes.map(n=>n.n))||1;
- const sk=nodes.map(n=>`<g><rect x="${n.x}" y="${n.y}" width="26" height="${Math.max(14,n.n/mxn*110)}" fill="${n.c}" rx="2"><title>${n.lb}: ${IN(n.n)}</title></rect>
-  <text x="${n.x+34}" y="${n.y+14}" font-size="12" font-weight="600" fill="var(--pt)">${n.lb}</text>
-  <text x="${n.x+34}" y="${n.y+29}" font-size="11" fill="var(--t3)">${IN(n.n)}</text></g>`).join('');
- const flows=[[0,2,j.am_sem?.n||0],[0,3,(j.am_avulso?.n||0)+(j.am_assin?.n||0)],[1,3,j.p1_avulsa?.n||0],
-  [3,4,j.p1_para_assin?.n||0]];
- const fl=flows.map(([a,b,n])=>{const A2=nodes[a],B2=nodes[b],w=Math.max(2,n/mxn*70);
-  return `<path d="M ${A2.x+26} ${A2.y+18} C ${(A2.x+B2.x)/2} ${A2.y+18}, ${(A2.x+B2.x)/2} ${B2.y+18}, ${B2.x} ${B2.y+18}"
-   stroke="${B2.c}" stroke-opacity=".26" stroke-width="${w}" fill="none"><title>${A2.lb} → ${B2.lb}: ${IN(n)}</title></path>`}).join('');
- // TEMPO ENTRE ETAPAS. Mediana e quartis: a distribuicao tem cauda longa e a media mente.
- // Mostra tambem quem NAO deu o passo, senao a tela parece melhor do que e.
- const ET=D.etapas||[];
- const TE=TB([
-  {k:'e',t:'Etapa',l:1,fx:1,f:r=>r.etapa,raw:r=>r.ord},
-  {k:'p',t:'Deram o passo',f:r=>IN(+r.pessoas),raw:r=>+r.pessoas},
-  {k:'np',t:'Não deram',f:r=>+r.nao_deram_o_passo?`<span style="color:var(--pt)">${IN(+r.nao_deram_o_passo)}</span>`:'—',raw:r=>+r.nao_deram_o_passo},
-  {k:'tx',t:'% que deu o passo',f:r=>{const t=+r.pessoas+ +r.nao_deram_o_passo;
-    const v=dv(+r.pessoas,t); return v==null?'—':`<b style="color:${v>=.5?'var(--vd)':'var(--pt)'}">${PC(v*100)}</b>`},
-   raw:r=>dv(+r.pessoas,+r.pessoas+ +r.nao_deram_o_passo)??-1},
-  {k:'md',t:'Mediana',f:r=>`<b>${IN(+r.mediana_dias)}d</b>`,raw:r=>+r.mediana_dias},
-  {k:'iq',t:'Metade do meio (p25–p75)',f:r=>`${IN(+r.p25_dias)}–${IN(+r.p75_dias)}d`,raw:r=>+r.p75_dias-+r.p25_dias},
-  {k:'av',t:'Média',f:r=>`<span class="c">${IN(+r.media_dias)}d</span>`,raw:r=>+r.media_dias},
-  {k:'mm',t:'Extremos',f:r=>`<span class="c f">${IN(+r.minimo_dias)}–${IN(+r.maximo_dias)}d</span>`,raw:r=>+r.maximo_dias}
- ],ET,{});
- const eRen=ET.find(r=>+r.ord===6), eAss=ET.find(r=>+r.ord===4), eRec=ET.find(r=>+r.ord===2);
- const blocoEtapas = ET.length ? `<div class="sc"><div class="sch"><div><h2>Quanto tempo cada passo demora</h2>
-  <p>Mediana e quartis, não média: a distribuição tem cauda longa e a média sozinha mente. Cada linha
-  conta <b>só quem já completou</b> a transição — a coluna <b>Não deram</b> mostra o tamanho do que ficou fora,
-  para o tempo não parecer melhor do que é. <b>O seletor de período não se aplica</b>: a jornada atravessa meses.</p></div></div>
-  <div class="pn">${TE.html}</div>
-  ${eRen?`<div class="al o" style="margin-top:8px"><b>A assinatura é uma máquina:</b> renovação a renovação, a mediana é
-   ${IN(+eRen.mediana_dias)} dias e a metade do meio cabe em ${IN(+eRen.p25_dias)}–${IN(+eRen.p75_dias)} dias.
-   É isso que valida usar "faltou um mês" como proxy de churn — o intervalo é mensal e apertado, não disperso.</div>`:''}
-  ${eAss&&eRec?`<div class="al c"><b>O gargalo não é a primeira compra, é a segunda.</b>
-   Só ${PC(dv(+eRec.pessoas,+eRec.pessoas+ +eRec.nao_deram_o_passo)*100)} de quem compra uma vez compra de novo
-   (${IN(+eRec.nao_deram_o_passo)} pessoas nunca voltaram), e converter comprador avulso em assinante acontece com
-   ${PC(dv(+eAss.pessoas,+eAss.pessoas+ +eAss.nao_deram_o_passo)*100)} deles, com mediana de
-   <b>${IN(+eAss.mediana_dias)} dias</b>. É o que sustenta a média de 1,67 pedidos por cliente — e o que trava o payback de mídia.</div>`:''}
-  </div>` : '';
- return `${blocoSess}${blocoEtapas}<div class="sc"><div class="sch"><div><h2>Fluxo completo</h2><p>Espessura proporcional ao volume de pessoas. Passe o mouse para ver os números.</p></div></div>
-  <div class="pn"><div class="pnb"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:250px;display:block" role="img" aria-label="Fluxo de pessoas entre amostra, compra, assinatura e renovação">${fl}${sk}</svg></div></div></div>
- <div class="sc"><div class="sch"><div><h2>Jornada de amostra</h2><p>Média de <b>${IN(+(D.am_dias[0]||{}).media)} dias</b> até a primeira compra, mediana de <b>${IN(+(D.am_dias[0]||{}).mediana)}</b>.</p></div></div>
-  <div class="pn"><div class="pnb">${jAm}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Jornada de compra única</h2></div></div>
-  <div class="pn"><div class="pnb">${jAv}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Assinatura — em revisão</h2>
-    <p>A curva de retenção de assinatura foi <b>retirada desta tela</b>. Os números que estavam aqui
-    contavam pedidos em vez de pessoas e misturavam renovação do WooCommerce, que assinou no sistema
-    antigo, sem o início correspondente no denominador — era isso que fazia uma etapa passar de 100%.</p></div></div>
-    ${(D.churn||[]).length ? `<div class="pn"><div class="pnh"><h3>Churn mensal medido nos pedidos</h3>
-      <span class="pl r">divergente do Appstle</span></div>
-      <div class="tw"><table><thead><tr><th class="l fx">Mês</th><th>Assinantes ativos</th>
-      <th>Pararam de pagar</th><th>Churn</th></tr></thead><tbody>${D.churn.map(c=>`<tr>
-      <td class="l fx">${MSL[+String(c.mes).slice(5,7)-1]}</td><td>${IN(+c.ativos)}</td>
-      <td>${IN(+c.perdidos)}</td><td><b style="color:${+c.churn_pct>15?'var(--vm)':'var(--pt)'}">${PC(+c.churn_pct)}</b></td>
-      </tr>`).join('')}</tbody><tfoot><tr><td class="l fx">Média</td><td></td><td></td>
-      <td>${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}</td></tr></tfoot></table></div></div>
-      <div class="al w" style="margin-top:8px"><b>Este número mede quem parou de pagar</b>, não quem clicou em cancelar —
-      inclui cartão vencido e cobrança que falhou. O Appstle aponta ~8%; esta conta aponta
-      ${PC(D.churn.reduce((a,c)=>a+ +c.churn_pct,0)/D.churn.length)}. Não é erro de método: a cadência é mensal em 93,8%
-      dos intervalos e quem faltou um mês e voltou não conta. A diferença provavelmente é lapso silencioso, e as
-      ${IN((D.jor.find(x=>x.e==='falha')||{}).n||0)} falhas de cobrança do Woo são evidência direta.
-      <b>Pendente de reconciliar com o Appstle.</b></div>` : ''}
-   </div>`;
 }
 
 function pgDefinicoes(){
@@ -1224,6 +1027,10 @@ function filtros(){
   ['anoant','Mesmo período do ano anterior'],['none','Sem comparação']];
  const MOD=[['sintese','Síntese'],['first','First click'],['last','Last click'],['plataforma','Plataformas']];
  document.getElementById('flz').innerHTML=`
+  <div class="fg"><label>Balde</label><div class="chk">
+   <button data-bal="" class="${S.bal===''?'on':''}" title="Amostra, compras e MRR somados">Tudo</button>
+   ${Object.entries(BALDE).map(([k,v])=>`<button data-bal="${k}" class="${S.bal===k?'on':''}" title="${v.d}">${v.n}</button>`).join('')}
+  </div></div>
   <div class="fg"><label for="fp">Período</label><select id="fp">${PER.map(([v,n])=>`<option value="${v}" ${S.per===v?'selected':''}>${n}</option>`).join('')}</select></div>
   ${S.per==='custom'?`<div class="fg"><input type="date" id="d1" value="${S.d1||MIN}" min="${MIN}" max="${MAX}" aria-label="Data inicial">
    <input type="date" id="d2" value="${S.d2||MAX}" min="${MIN}" max="${MAX}" aria-label="Data final"></div>`:''}
@@ -1270,7 +1077,7 @@ function render(){
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
     S.pg==='semanal'?pgSemanal():S.pg==='midia'?pgMidia():
-    S.pg==='campanhas'?pgCampanhas():S.pg==='cohorts'?pgCohorts():S.pg==='jornadas'?pgJornadas():
+    S.pg==='campanhas'?pgCampanhas():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>
@@ -1368,8 +1175,9 @@ document.getElementById('flx').addEventListener('change',e=>{
  const m={fcat:'cat',fgr:'gru',frec:'rec'};
  if(m[e.target.id]){S[m[e.target.id]]=e.target.value;url();render()}});
 document.getElementById('flz').addEventListener('click',e=>{
+ if(e.target.dataset&&e.target.dataset.bal!==undefined){S.bal=e.target.dataset.bal;S.cat='';url();render();return}
  if(e.target.id==='bm'){S.mais=!S.mais;render()}
- if(e.target.id==='bc'){Object.assign(S,{per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',gru:'',eixo:'pedido',rec:'liq',d1:'',d2:''});url();render()}
+ if(e.target.id==='bc'){Object.assign(S,{per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',gru:'',eixo:'pedido',rec:'liq',d1:'',d2:''});url();render()}
  if(e.target.id==='br'){render()}
  if(e.target.id==='be'){
   if(!CSV.length)return;
@@ -1382,11 +1190,11 @@ document.getElementById('ov').onclick=fech;
 document.getElementById('dx').onclick=fech;
 addEventListener('keydown',e=>{if(e.key==='Escape')fech()});
 function url(){const p=new URLSearchParams();
- for(const k of ['pg','per','cmp','mod','can','cat','gru','eixo','rec','d1','d2'])if(S[k])p.set(k,S[k]);
+ for(const k of ['pg','per','cmp','mod','can','cat','bal','gru','eixo','rec','d1','d2'])if(S[k])p.set(k,S[k]);
  history.replaceState(null,'','?'+p)}
 (function init(){
  const p=new URLSearchParams(location.search);
- for(const k of ['pg','per','cmp','mod','can','cat','gru','eixo','rec','d1','d2'])if(p.get(k))S[k]=p.get(k);
+ for(const k of ['pg','per','cmp','mod','can','cat','bal','gru','eixo','rec','d1','d2'])if(p.get(k))S[k]=p.get(k);
  if(!PGS[S.pg])S.pg='resumo';
  try{const c=localStorage.getItem('ca_cols'); if(c)S.oc=JSON.parse(c)}catch(e){}
  render();
