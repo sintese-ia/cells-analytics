@@ -445,8 +445,7 @@ const PGS={
  tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
  semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
- midia:{t:'Mídia',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
- campanhas:{t:'Campanhas',ic:'M3 11l19-7-7 19-3-8-9-4z'},
+ midia:{t:'Mídia e campanhas',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
 };
@@ -540,8 +539,11 @@ function pgMidia(){
  const dias=+S.gper||7, maxd=FECHADO;
  const lim=new Date(maxd+'T12:00:00'); lim.setDate(lim.getDate()-(dias-1));
  const de=lim.toISOString().slice(0,10);
+ // As tres ultimas vem da tela Campanhas, que foi fundida aqui: amostra e assinante nao existem
+ // no grid. Elas tem grao de CONJUNTO (nao de anuncio), entao so somam ate esse nivel.
  const KS=['spend','impressoes','ob_clicks','plat_lpv','plat_atc','plat_checkout','plat_compras',
-   'pedidos','nc_pedidos','receita','nc_receita','conta','margem','nc_margem'];
+   'pedidos','nc_pedidos','receita','nc_receita','conta','margem','nc_margem',
+   'amostras','assin_novo','nc_estrito'];
  const Z0=()=>Object.fromEntries(KS.map(k=>[k,0]));
  const som=(d,r)=>{KS.forEach(k=>d[k]+=(+r[k]||0));return d};
  const raiz=new Map(); const q=(S.gbusca||'').toLowerCase();
@@ -553,6 +555,19 @@ function pgMidia(){
    const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); som(n2.a,r);
    const n3=n2.f.get(r.conjunto)||{n:r.conjunto,lv:3,a:Z0(),f:new Map()}; n2.f.set(r.conjunto,n3); som(n3.a,r);
    const n4=n3.f.get(r.anuncio)||{n:r.anuncio,lv:4,a:Z0(),f:null,ni:r.nao_identificado}; n3.f.set(r.anuncio,n4); som(n4.a,r);
+ }
+ // Amostras, novos assinantes e o "NC estrito" vem de core.vw_campanha_dia_real, com grao de
+ // conjunto. Somam so ate o nivel 3 — no anuncio ficam em branco de proposito, porque atribuir
+ // amostra a criativo individual nao tem base. Nao passam por `som` do grid para nao duplicar.
+ for(const r of (D.camp||[])){
+   const d=String(r.dia||'').slice(0,10);
+   if(d<de||d>maxd) continue;
+   if(!passaObj(d,r.conjunto)) continue;
+   if(q && ![r.campanha,r.conjunto].some(x=>String(x||'').toLowerCase().includes(q))) continue;
+   const add=o=>{o.amostras+=(+r.ped_amostra||0);o.assin_novo+=(+r.assin_novo||0);o.nc_estrito+=(+r.ped_aquisicao||0)};
+   const n1=raiz.get('meta')||{n:'meta',lv:1,a:Z0(),f:new Map()}; raiz.set('meta',n1); add(n1.a);
+   const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); add(n2.a);
+   const n3=n2.f.get(r.conjunto)||{n:r.conjunto,lv:3,a:Z0(),f:new Map()}; n2.f.set(r.conjunto,n3); add(n3.a);
  }
  // metrica de CUSTO nao existe sem spend: 0/n daria 0 e pintaria de verde um CPA inexistente
  const cst=(sp,n)=>(!sp||!n)?null:sp/n, dv=(a,b)=>(b&&b!==0)?a/b:null;
@@ -574,7 +589,15 @@ function pgMidia(){
   {k:'uv',t:'Unique Visitors',f:a=>nf(a.plat_lpv,0),v:a=>a.plat_lpv,p:1},
   {k:'cpv',t:'CPV',f:a=>R$(cst(a.spend,a.plat_lpv)),v:a=>cst(a.spend,a.plat_lpv),p:1},
   {k:'obc',t:'OB Clicks',f:a=>nf(a.ob_clicks,0),v:a=>a.ob_clicks,p:1},
-  {k:'obctr',t:'OB CTR',f:a=>PC(dv(100*a.ob_clicks,a.impressoes),2),v:a=>dv(100*a.ob_clicks,a.impressoes),p:1}];
+  {k:'obctr',t:'OB CTR',f:a=>PC(dv(100*a.ob_clicks,a.impressoes),2),v:a=>dv(100*a.ob_clicks,a.impressoes),p:1},
+  // vindas da tela Campanhas — grao de conjunto, em branco no nivel de anuncio
+  {k:'am',t:'Samples',ce:1,f:a=>a.amostras?nf(a.amostras,0):'<span class="na">—</span>',v:a=>a.amostras},
+  {k:'cam',t:'Cost/Sample',ce:1,f:a=>R0(cst(a.spend,a.amostras)),v:a=>cst(a.spend,a.amostras)},
+  {k:'asn',t:'New Subs',ce:1,f:a=>a.assin_novo?nf(a.assin_novo,0):'<span class="na">—</span>',v:a=>a.assin_novo},
+  {k:'nce',t:'NCP estrito',ce:1,
+   tip:'Cliente novo contado so quando o modelo tambem atribuiu a AQUISICAO ao Meta. A coluna NCP ao lado credita a campanha que esta na UTM do pedido. Em 30 dias sao 47 contra 28 — CAC de R$ 381 contra R$ 640. Nao e bug, e first click contra last click.',
+   f:a=>a.nc_estrito?nf(a.nc_estrito,0):'<span class="na">—</span>',v:a=>a.nc_estrito},
+  {k:'cace',t:'CAC estrito',ce:1,f:a=>R0(cst(a.spend,a.nc_estrito)),v:a=>cst(a.spend,a.nc_estrito),c:'cac'}];
  const col=COLS.find(c=>c.k===S.gord)||COLS[0];
  const ord=l=>l.sort((x,y)=>{const a=col.v(x.a),b=col.v(y.a);
    if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
@@ -874,80 +897,6 @@ function pgMensal(){
   <div class="pn">${T.html}</div></div>`;
 }
 
-function pgCampanhas(){
- if(S.bal==='mrr') return avisoMRR;
- const R=(D.camp||[]).filter(r=>+r.spend>0||+r.ped_total>0);
- // GRAO DE DIA. A versao anterior filtrava por SOBREPOSICAO da janela de veiculacao e somava a
- // campanha INTEIRA sempre que ela encostasse no periodo: numa leitura de 7 dias mostrava
- // R$ 12.385 de gasto contra R$ 3.630 reais e CAC de R$ 179,50 — verde — onde o real era
- // R$ 605,02. A tela dizia "escala" onde o dado dizia "pausa".
- const [pi,pf0]=jf(jan()), pf=pf0;
- const Rp=R.filter(r=>{const d=String(r.dia||'').slice(0,10); return d>=pi&&d<=pf&&passaObj(d,r.conjunto)});
- const nivel=S.cnivel||'campanha';
- const ag={};
- for(const r of Rp){
-  const k=nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)'));
-  const o=ag[k]||(ag[k]={k,campanha:r.campanha,conjunto:r.conjunto,spend:0,impr:0,cliques:0,
-    ped_total:0,ped_amostra:0,ped_aquisicao:0,rec_aquisicao:0,rec_amostra:0,rec_total:0,
-    marg_total:0,marg_aquisicao:0,assin_novo:0,compras_plat:0,receita_plat:0,ids:0});
-  for(const f of ['spend','impr','cliques','ped_total','ped_amostra','ped_aquisicao','rec_aquisicao',
-    'rec_amostra','rec_total','marg_total','marg_aquisicao','assin_novo','compras_plat','receita_plat'])
-   o[f]+= +(r[f]||0);
-  o.ids=Math.max(o.ids,+(r.ids_no_nome||0));
-  (o.objs||(o.objs=new Set())).add(objDe(r.dia,r.conjunto));
- }
- const rows=Object.values(ag).sort((a,b)=>b.spend-a.spend);
- const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},{});
- const mxs=Math.max(...rows.map(r=>r.spend),1);
- const cols=[
-  {k:'n',t:nivel==='campanha'?'Campanha':'Campanha › Conjunto',l:1,fx:1,
-   f:r=>{const os=[...(r.objs||[])].filter(x=>x!=='venda');
-    const sel=os.map(o=>`<span class="pl ${o==='amostra'?'i':'g'}" title="objetivo declarado em core.campanha_objetivo">${o}</span>`).join(' ');
-    return r.k+(r.ids>1?' <span class="pl r">'+r.ids+' ids</span>':'')+(sel?' '+sel:'')},raw:r=>r.k,tf:()=>'<b>Total</b>'},
-  {k:'s',t:'Gasto',f:r=>R0(r.spend)+` <span class="br2"><i style="width:${r.spend/mxs*100}%"></i></span>`,raw:r=>r.spend,tf:t=>R0(t.spend)},
-  {k:'aq',t:'Clientes novos',tip:'Cliente novo em compra cheia. Amostra tem coluna própria.',f:r=>IN(r.ped_aquisicao),raw:r=>r.ped_aquisicao,tf:t=>IN(t.ped_aquisicao)},
-  {k:'cac',t:'CAC de cliente',f:r=>{const v=dv(r.spend,r.ped_aquisicao);
-    return v==null?'<span class="na">—</span>':`<b style="color:${v<=250?'var(--vd)':v<=500?'var(--pt)':'var(--vm)'}">${R$(v)}</b>`},
-   raw:r=>dv(r.spend,r.ped_aquisicao)??1e9,tf:t=>R$(dv(t.spend,t.ped_aquisicao))},
-  {k:'raq',t:'Receita de novos',f:r=>R0(r.rec_aquisicao),raw:r=>r.rec_aquisicao,tf:t=>R0(t.rec_aquisicao)},
-  {k:'ncr',t:'NC-ROAS',f:r=>{const v=dv(r.rec_aquisicao,r.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>dv(r.rec_aquisicao,r.spend)??-1,tf:t=>RT(dv(t.rec_aquisicao,t.spend))},
-  {k:'am',t:'Amostras',ce:1,tip:'Pedido só de amostra (<R$50). Nunca conta como cliente novo.',f:r=>IN(r.ped_amostra),raw:r=>r.ped_amostra,tf:t=>IN(t.ped_amostra)},
-  {k:'cam',t:'Custo por amostra',ce:1,f:r=>{const v=dv(r.spend,r.ped_amostra);return v==null?'<span class="na">—</span>':R$(v)},raw:r=>dv(r.spend,r.ped_amostra)??1e9,tf:t=>R$(dv(t.spend,t.ped_amostra))},
-  {k:'an',t:'Novos assinantes',ce:1,f:r=>IN(r.assin_novo),raw:r=>r.assin_novo,tf:t=>IN(t.assin_novo)},
-  {k:'mt',t:'Margem total',f:r=>R0(r.marg_total),raw:r=>r.marg_total,tf:t=>R0(t.marg_total)},
-  {k:'mr',t:'Margem por real',tip:'Margem total ÷ gasto. Inclui a margem da amostra, que é receita real.',
-   f:r=>{const v=dv(r.marg_total,r.spend);return v==null?'<span class="na">—</span>':
-    `<b style="color:${v>=1?'var(--vd)':v>=.5?'var(--pt)':'var(--vm)'}">${RT(v)}</b>`},
-   raw:r=>dv(r.marg_total,r.spend)??-1,tf:t=>RT(dv(t.marg_total,t.spend))},
-  {k:'cl',t:'Cliques',f:r=>IN(r.cliques),raw:r=>r.cliques,tf:t=>IN(t.cliques)},
-  {k:'cpc',t:'CPC',f:r=>R$(dv(r.spend,r.cliques)),raw:r=>dv(r.spend,r.cliques)??0,tf:t=>R$(dv(t.spend,t.cliques))},
-  {k:'pl',t:'Compras (Meta diz)',tip:'O que a plataforma se atribui. Não somar com o nosso — pode ter sobreposição.',
-   f:r=>IN(r.compras_plat),raw:r=>r.compras_plat,tf:t=>IN(t.compras_plat)}
- ];
- const T=TB(cols,rows,tot,false);
- const semVenda=rows.filter(r=>r.spend>300&&r.ped_total===0);
- // Rp agora e uma lista de DIAS de campanha, nao de campanhas — contar linhas aqui seria enganoso.
- const nCamp=new Set(rows.map(r=>r.k)).size, nTot=new Set(R.map(r=>nivel==='campanha'?(r.campanha||'(sem campanha)'):((r.campanha||'?')+' › '+(r.conjunto||'(sem conjunto)')))).size;
- const aviso = avisoObj(S.bal)+`<div class="al o">Mostrando <b>${nCamp} de ${nTot}</b> ${nivel==='campanha'?'campanhas':'conjuntos'} com atividade entre <b>${DT(pi)} e ${DT(pf)}</b> — somando <b>só os dias dentro do período</b>, não a veiculação inteira.</div>`+avisoAberto();
- return `${aviso}<div class="sc"><div class="gr g6">
-   <div class="cd"><div class="k">Gasto</div><div class="v">${R0(tot.spend)}</div><div class="c f">${rows.length} ${nivel==='campanha'?'campanhas':'conjuntos'}</div></div>
-   <div class="cd"><div class="k">Clientes novos</div><div class="v">${IN(tot.ped_aquisicao)}</div></div>
-   <div class="cd"><div class="k">CAC de cliente</div><div class="v">${R$(dv(tot.spend,tot.ped_aquisicao))}</div></div>
-   <div class="cd"><div class="k">Amostras</div><div class="v">${IN(tot.ped_amostra)}</div><div class="c f">custo ${R$(dv(tot.spend,tot.ped_amostra))}</div></div>
-   <div class="cd"><div class="k">Margem por real</div><div class="v">${RT(dv(tot.marg_total,tot.spend))}</div></div>
-   <div class="cd"><div class="k">Novos assinantes</div><div class="v">${IN(tot.assin_novo)}</div></div>
-  </div></div>
-  <div class="al o"><b>Cliente novo e amostra são colunas separadas de propósito.</b> Antes desta correção
-  a tela contava amostra como aquisição, e o CAC do conjunto de kit aparecia em R$ 9 — era custo por
-  amostra, não por cliente. O CAC real de cliente novo fica entre R$ 200 e R$ 575.</div>
-  ${semVenda.length?`<div class="al w"><b>${semVenda.length} ${nivel==='campanha'?'campanhas':'conjuntos'} com gasto acima de R$ 300 e zero pedido atribuído:</b>
-   ${semVenda.slice(0,5).map(r=>r.k+' ('+R0(r.spend)+')').join(' · ')}. Pode ser campanha de topo de funil, ou UTM que não chegou.</div>`:''}
-  <div class="sc"><div class="sch"><div><h2>Desempenho por ${nivel==='campanha'?'campanha':'conjunto de anúncio'}</h2>
-   <p>Somado dia a dia dentro do período selecionado. Gasto agrupado por nome — se um nome tem mais de um id no Meta, aparece o selo.</p></div>
-   <div class="chk">${[['campanha','Campanha'],['conjunto','Conjunto']].map(([k,n])=>`<button data-cnivel="${k}" class="${nivel===k?'on':''}">${n}</button>`).join('')}</div></div>
-   <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>`;
-}
-
 function pgDefinicoes(){
  const F=[
   ['ROAS','Faturamento atribuído ÷ gasto.','receita ÷ gasto','core.vw_app_pedido + vw_mvp_custo_dia','Denominador zero mostra —, nunca zero nem infinito.'],
@@ -1077,7 +1026,6 @@ function render(){
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
     S.pg==='semanal'?pgSemanal():S.pg==='midia'?pgMidia():
-    S.pg==='campanhas'?pgCampanhas():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>
