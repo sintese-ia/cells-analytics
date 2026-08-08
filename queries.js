@@ -22,15 +22,30 @@ module.exports = {
   // Lendo da sessao, os quatro campos passam a descrever o MESMO clique.
   // `canal_aq` continua vindo do bridge: ROAS e CAC por canal nao mudam, so a hierarquia abaixo.
   // Custo do grao mais fino: 1.241 -> 1.327 grupos (+7%).
-  dias: `with b as (
+  dias: `with cn as (
+   -- (canal, campanha) e (canal, conjunto) que REALMENTE existem em sessao. Serve de sanidade para
+   -- o pedido SEM sessao de origem, onde o bridge e a unica fonte e nao ha o que conferir: se o
+   -- nome nunca apareceu numa sessao daquele canal, ele nao pertence ali. Foi assim que
+   -- 'CJ_teste_energybydesign' (conjunto exclusivo do Meta) parou de aparecer embaixo de 'direct'.
+   select distinct regexp_replace(coalesce(fc.canal, w.source_norm, ''), '^google_.*$', 'google') canal,
+          nullif(w.utm_campaign,'') campanha, nullif(w.utm_content,'') conjunto
+     from web.sessions w
+     left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
+ ), b as (
  select p.created_at, p.canal, p.canal_aq, p.sistema, p.categoria,
         -- SE A SESSAO EXISTE, ELA MANDA — inclusive quando esta vazia. Cair de volta no bridge
         -- quando a sessao vem vazia foi o que reintroduziu o Frankenstein: 4 pedidos com sessao de
         -- origem SEM campanha nenhuma apareciam com '2026_06_VENDAS' pendurado embaixo de 'direct'.
         -- Bridge so entra quando nao ha sessao (woo legado, pedido importado) — ai nao ha o que checar.
-        case when s.first_session_id is null then p.campanha
+        case when s.first_session_id is null then
+                  (case when exists (select 1 from cn where cn.campanha = p.campanha
+                          and cn.canal = regexp_replace(p.canal_aq,'^google_.*$','google'))
+                        then p.campanha end)
              when fs.coerente then nullif(fs.utm_campaign,'') end campanha,
-        case when s.first_session_id is null then p.adset
+        case when s.first_session_id is null then
+                  (case when exists (select 1 from cn where cn.conjunto = p.adset
+                          and cn.canal = regexp_replace(p.canal_aq,'^google_.*$','google'))
+                        then p.adset end)
              when fs.coerente then nullif(fs.utm_content,'')  end adset,
         case when s.first_session_id is null then null
              when fs.coerente then nullif(fs.utm_term,'')     end anuncio,

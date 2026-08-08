@@ -1098,15 +1098,20 @@ function pgCanais(){
  const PL={}, GS={};
  for(const r of (D.grid||[])){
   const d=String(r.dia).slice(0,10); if(!inP(d,jf2))continue;
-  const an=r.anuncio||'(sem anúncio)';
-  for(const k of [r.campanha, r.campanha+'|'+r.conjunto, r.campanha+'|'+r.conjunto+'|'+an]){
+  // CHAVE COM O CANAL NA FRENTE. Sem ele, qualquer canal com campanha de mesmo nome puxava o
+  // gasto e as impressoes do Meta: a linha `direct > 2026_06_VENDAS` (1 pedido, R$ 299,70)
+  // aparecia com R$ 3.495 de gasto e 93.183 impressoes, ROAS 0,09. O Gabriel pegou em 08/08.
+  const an=r.anuncio||'(sem anúncio)', c0=r.canal;
+  for(const k of [c0+'|'+r.campanha, c0+'|'+r.campanha+'|'+r.conjunto,
+                  c0+'|'+r.campanha+'|'+r.conjunto+'|'+an]){
    const o=PL[k]||(PL[k]={spend:0,impressoes:0,ob_clicks:0,plat_lpv:0,plat_atc:0,plat_checkout:0});
    o.spend+=(+r.spend||0); o.impressoes+=(+r.impressoes||0); o.ob_clicks+=(+r.ob_clicks||0);
    o.plat_lpv+=(+r.plat_lpv||0); o.plat_atc+=(+r.plat_atc||0); o.plat_checkout+=(+r.plat_checkout||0);
   }
  }
  for(const x of spend){ if(inP(x.dia,jf2)) GS[x.fonte]=(GS[x.fonte]||0)+(+x.custo||0) }
- const plt=(no,cam)=>no.lv===1?null:(PL[cam.split('›').slice(1).join('|')]||null);
+ // `cam` ja comeca pelo canal, entao a chave inteira casa com a do grid.
+ const plt=(no,cam)=>no.lv===1?null:(PL[cam.split('›').join('|')]||null);
  const gst=(no,cam)=>{ if(no.lv===1)return GS[no.n]||0; const q=plt(no,cam); return q?q.spend:0 };
  const cst=(sp,n)=>(!sp||!n)?null:sp/n;
  // O CONJUNTO COMPLETO. A tela antiga de Midia tinha 23 colunas e a fusao tinha derrubado seis
