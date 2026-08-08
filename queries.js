@@ -108,9 +108,11 @@ from core.vw_payback_coorte order by mes, canal`,
   // DRE de contribuicao por dia. Fecha o buraco do FRETE: a `margem` das outras views e
   // `margem_antes_frete` e o custo de envio nao entrava de lado nenhum, sendo que 93% dos pedidos
   // de julho sairam com frete gratis. O custo vem do parametro declarado `frete_medio_por_envio`
-  // (Bling, media 2026 = R$ 14,48) ate o custo real por pedido ser sincronizado.
-  // Ver cells-infra/fixes/2026-08-08-vw-dre-dia.sql.
-  dre: `select dia, pedidos, pedidos_sem_cmv, valor_tabela, descontos, faturamento,
+  // O frete e o custo REAL por pedido, de commerce.frete_pedido (Bling, logisticas/objetos).
+  // Pedido sem volume_id cai no parametro declarado `frete_medio_por_envio` — `pedidos_frete_estimado`
+  // conta quantos, para a tela nunca apresentar estimativa como medicao.
+  // Ver cells-infra/fixes/2026-08-08-vw-dre-dia.sql e 2026-08-08-frete-real-bling.sql.
+  dre: `select dia, pedidos, pedidos_sem_cmv, pedidos_frete_estimado, valor_tabela, descontos, faturamento,
    cmv, taxas, frete_cobrado, frete_liquido, midia, margem_contribuicao, resultado
   from core.vw_dre_dia where dia >= '2025-01-01'`,
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---

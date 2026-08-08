@@ -948,7 +948,7 @@ function pgMensal(){
 function pgResultado(){
  const j=jan(), R=(D.dre||[]).filter(r=>inP(String(r.dia).slice(0,10),j));
  if(!R.length) return `<div class="emp">Sem dado no período. Confira <code>core.vw_dre_dia</code>.</div>`;
- const K=['pedidos','pedidos_sem_cmv','valor_tabela','descontos','faturamento','cmv','taxas',
+ const K=['pedidos','pedidos_sem_cmv','pedidos_frete_estimado','valor_tabela','descontos','faturamento','cmv','taxas',
           'frete_cobrado','frete_liquido','midia','margem_contribuicao','resultado'];
  const T=Object.fromEntries(K.map(k=>[k,R.reduce((a,r)=>a+(+r[k]||0),0)]));
  const pf=v=>T.faturamento?PC(100*v/T.faturamento):'—';
@@ -981,7 +981,7 @@ function pgResultado(){
   ${L('Taxas e impostos',-T.taxas,'(−)','',
       'Gateway 4% + Shopify 2% + Simples 6% + provisão de devolução 0,7% = 12,7%.')}
   ${L('Frete líquido',-T.frete_liquido,'(−)','',
-      'Custo de envio menos o frete cobrado do cliente. O custo usa o parâmetro declarado frete_medio_por_envio.')}
+      'Custo real por pedido, do Bling, menos o frete cobrado do cliente. SEDEX em SP sai ~R$ 11; Express fora de SP ~R$ 19.')}
   ${L('MARGEM DE CONTRIBUIÇÃO',T.margem_contribuicao,'=','1')}
   ${L('Mídia',-T.midia,'(−)','','Meta e WhatsApp por API. Google Ads não tem custo coletado.')}
   ${L('RESULTADO',T.resultado,'=','1')}
@@ -1012,10 +1012,14 @@ function pgResultado(){
  const avisos=[
   `<div class="al w"><b>Isto é margem de contribuição, não lucro.</b> Não há custo fixo aqui —
    salário, pró-labore, ferramenta, contabilidade. "Resultado" positivo não significa empresa no azul.</div>`,
-  `<div class="al w"><b>O frete é premissa declarada, não custo real por pedido.</b> O valor de
-   envio está no Bling (<code>logisticas/objetos</code>), não no Postgres. Aqui entra como
-   <code>frete_medio_por_envio</code> — hoje <b>R$ 14,48</b>, média de 829 envios de 2026. Trocar o
-   parâmetro muda a série inteira.</div>`,
+  T.pedidos_frete_estimado>0
+   ? `<div class="al w"><b>O frete é real, do Bling</b> (<code>logisticas/objetos</code>), pedido a
+      pedido — <b>${IN(T.pedidos-T.pedidos_frete_estimado)} de ${IN(T.pedidos)}</b> deste período.
+      ${IN(T.pedidos_frete_estimado)} sem <code>volume_id</code> caem no parâmetro declarado
+      <code>frete_medio_por_envio</code>. O rastreio só grava <code>volume_id</code> desde
+      <b>14/04/2026</b> — antes disso tudo é estimativa.</div>`
+   : `<div class="al o"><b>O frete é real, do Bling</b> (<code>logisticas/objetos</code>), em todos
+      os ${IN(T.pedidos)} pedidos do período. Nenhuma estimativa aqui.</div>`,
   T.pedidos_sem_cmv>0
    ? `<div class="al c"><b>${IN(T.pedidos_sem_cmv)} ${T.pedidos_sem_cmv===1?'pedido entra':'pedidos entram'} com CMV zero.</b>
       ${T.pedidos_sem_cmv===1?'Ele não tem':'Eles não têm'} custo cadastrado em
