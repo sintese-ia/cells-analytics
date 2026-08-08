@@ -102,8 +102,11 @@ from core.vw_payback_coorte order by mes, canal`,
   // Conjunto de amostra e julgado por custo por amostra, nunca por CAC: o CJ_kit_exp aparecia
   // com CAC de R$ 940 pintado de vermelho e nunca tentou comprar cliente direto.
   // DDL e a classificacao em cells-infra/fixes/2026-08-07-campanha-objetivo.sql.
+  // SEM janela de tempo. Com `dia >= current_date - 90` todo periodo mais antigo caia no default
+  // 'venda', e o balde Amostras em "Todo o historico" mostrava gasto zero — o painel dizia que a
+  // amostra saiu de graca. Sao 1.293 linhas no historico inteiro; a janela nao economizava nada.
   objetivo: `select dia, conjunto, objetivo, classificado
- from core.vw_campanha_objetivo_dia where dia >= current_date - 90`,
+ from core.vw_campanha_objetivo_dia`,
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,
