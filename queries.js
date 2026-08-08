@@ -7,16 +7,24 @@ module.exports = {
   // inteiro — o custo de payload e irrelevante perto de errar o numero.
   // Piso em 2025-01-01: o banco comeca em 16/01/2025 e o painel so enxergava 2026, entao o total
   // de clientes nunca podia fechar (1.206 pagantes no historico, 1.391 com amostra).
-  // `campanha` no grao desde 08/08: sem ela o painel so enxergava CANAL, e canal de creator seria
-  // uma linha unica chamada "creator" — impossivel comparar creator com creator. Custo medido:
-  // 1.145 -> 1.229 grupos (+7%), 78 campanhas distintas no historico.
+  // HIERARQUIA COMPLETA no grao: canal > campanha > conjunto > anuncio, de UMA fonte so.
+  // Antes a tela de Midia lia vw_ads_metricas_dia e a de Atribuicao lia vw_app_pedido, e as duas
+  // discordavam do Meta em 35% em julho (R$ 20.688,70 contra R$ 15.377,07; 196 pedidos contra
+  // 169) — first click contra last click. Empilhar as duas daria um pai que nao bate com os
+  // filhos. Agora receita, pedidos, clientes e margem saem TODOS de vw_app_pedido em qualquer
+  // nivel; do grid do Meta vem so gasto e as colunas reportadas pela plataforma.
+  // `anuncio` vem de bridge_order_session.first_touch_term (212 de 242 pedidos em julho).
+  // Custo do grao mais fino: 1.241 -> 1.327 grupos (+7%).
   dias: `with b as (
- select created_at, canal, canal_aq, sistema, categoria, campanha, bruto, desconto, reembolso,
-        liquido, cmv, margem, cmv_ok, basis,
-        dense_rank() over (order by coalesce(cid,email)) kid
-   from core.vw_app_pedido where created_at>='2025-01-01')
+ select p.created_at, p.canal, p.canal_aq, p.sistema, p.categoria, p.campanha, p.adset,
+        s.first_touch_term anuncio,
+        p.bruto, p.desconto, p.reembolso, p.liquido, p.cmv, p.margem, p.cmv_ok, p.basis,
+        dense_rank() over (order by coalesce(p.cid,p.email)) kid
+   from core.vw_app_pedido p
+   left join core.bridge_order_session s on s.order_id = p.order_id
+  where p.created_at>='2025-01-01')
 select created_at::date dia, canal, canal_aq, sistema, categoria,
- nullif(campanha,'') campanha,
+ nullif(campanha,'') campanha, nullif(adset,'') conjunto, nullif(anuncio,'') anuncio,
  count(*) pedidos, count(distinct kid) clientes, array_agg(distinct kid) ks,
  round(sum(bruto)::numeric,2) bruto, round(sum(desconto)::numeric,2) desc_,
  round(sum(reembolso)::numeric,2) reemb, round(sum(liquido)::numeric,2) liq,
@@ -24,7 +32,7 @@ select created_at::date dia, canal, canal_aq, sistema, categoria,
  sum((cmv_ok)::int) cmv_ok,
  sum((coalesce(basis,'session') in ('session','landing'))::int) med,
  sum((basis='inherited')::int) inf
-from b group by 1,2,3,4,5,6`,
+from b group by 1,2,3,4,5,6,7,8`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita

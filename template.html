@@ -250,7 +250,7 @@ const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(MAX)} ainda não fe
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
-const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'spend',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',eixo:'pedido',rec:'liq',
+const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'rec',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',eixo:'pedido',rec:'liq',
  gran:'dia',ind:'liq',srt:{},oc:{},mais:false,d1:'',d2:''};
 function addD(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function jan(){
@@ -292,7 +292,7 @@ function Z(){const o={rec:0,bruto:0,desc:0,reemb:0,cmv:0,marg:0,ped:0,cli:0,cmv_
 function uneKS(destino,fontes){for(const f of fontes){if(f&&f.ks)for(const k of f.ks)destino.ks.add(k)}
  destino.cli=destino.ks.size;return destino}
 function agg(j,{canalView=false}={}){
- const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{},cmp:{}});
+ const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{},cmp:{},arv:{}});
  if(!j)return A;
  for(const r of dias){
   if(!inP(r.dia,j))continue;
@@ -311,7 +311,14 @@ function agg(j,{canalView=false}={}){
   // creator vira uma linha aqui em vez de sumir dentro de um canal chamado "creator".
   const nomeC=r.campanha||'(sem campanha)';
   const cp=A.cmp[c+'|'+nomeC]||(A.cmp[c+'|'+nomeC]=Object.assign(Z(),{canal:c,campanha:nomeC}));
-  for(const t of [A,o,k,cp]){
+  // ARVORE canal > campanha > conjunto > anuncio. TODA a receita sai daqui, em todo nivel, para
+  // que filho sempre some no pai. Gasto e colunas de plataforma entram depois, do grid do Meta.
+  const nomeJ=r.conjunto||'(sem conjunto)', nomeA=r.anuncio||'(sem anúncio)';
+  const n1=A.arv[c]||(A.arv[c]={n:c,lv:1,a:Z(),f:{}});
+  const n2=n1.f[nomeC]||(n1.f[nomeC]={n:nomeC,lv:2,a:Z(),f:{}});
+  const n3=n2.f[nomeJ]||(n2.f[nomeJ]={n:nomeJ,lv:3,a:Z(),f:{}});
+  const n4=n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
+  for(const t of [A,o,k,cp,n1.a,n2.a,n3.a,n4.a]){
    t.rec+=v;t.bruto+=r.bruto;t.desc+=r.desc_;t.reemb+=r.reemb;t.cmv+=r.cmv;t.marg+=r.marg;
    t.ped+=r.pedidos;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
    if(r.ks)for(const x of r.ks)t.ks.add(x);
@@ -322,6 +329,7 @@ function agg(j,{canalView=false}={}){
  for(const o of Object.values(A.can))o.cli=o.ks.size;
  for(const k of Object.values(A.cat))k.cli=k.ks.size;
  for(const c of Object.values(A.cmp))c.cli=c.ks.size;
+ (function cli(n){for(const x of Object.values(n)){x.a.cli=x.a.ks.size; if(x.f)cli(x.f)}})(A.arv);
  for(const s of spend){
   if(!inP(s.dia,j))continue;
   if(S.can&&s.fonte!==S.can)continue;
@@ -463,11 +471,10 @@ function colToggle(cols){
 /* ==================== PÁGINAS ==================== */
 const PGS={
  resumo:{t:'Resumo executivo',ic:'M3 12h4l3-8 4 16 3-8h4'},
- atribuicao:{t:'Atribuição',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
+ canais:{t:'Canais e campanhas',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
  tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
  semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
- midia:{t:'Mídia e campanhas',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
  resultado:{t:'Resultado',ic:'M3 3v18h18M7 15l4-5 3 3 5-7'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
@@ -753,7 +760,7 @@ function pgResumo(){
  <div class="sc"><div class="sch"><div><h2>Composição do faturamento</h2><p>As seis categorias empilhadas por mês. <b>Amostra entra no faturamento</b> — é receita real que entrou — mas nunca conta como novo cliente nem entra no CAC.</p></div></div>
   <div class="pn"><div class="pnb">${chartStack(sm,ORD)}</div></div></div>
  <div class="sc"><div class="sch"><div><h2>Atribuição — top 5 canais</h2><p>Sem receita recorrente: atribuir renovação a canal não faz sentido.</p></div>
-  <button class="bt" data-go="atribuicao">Ver tudo →</button></div><div class="pn">${tp.html}</div></div>
+  <button class="bt" data-go="canais">Ver tudo →</button></div><div class="pn">${tp.html}</div></div>
  <div class="sc"><div class="sch"><div><h2>Saúde da assinatura</h2></div></div>${sa}</div>
  <div class="sc"><div class="sch"><div><h2>Insights e alertas</h2><p>Derivados do dado do período, não texto fixo.</p></div></div>${al.map(([t,x])=>`<div class="al ${t}">${x}</div>`).join('')}</div>
  <div class="sc"><div class="sch"><div><h2>Saúde do dado</h2><p>Um painel que não mostra os próprios buracos mente com mais autoridade que uma planilha.</p></div></div>${sh}</div>`;
@@ -1072,6 +1079,119 @@ function pgResultado(){
  <div class="sc">${avisos}</div>`;
 }
 
+/* ============ CANAIS E CAMPANHAS — a tela unica (08/08/2026) ============ */
+// Fundiu "Atribuicao" e "Midia e campanhas". Elas mediam a MESMA coisa de dois jeitos: em julho o
+// Meta dava R$ 20.688,70 / 196 pedidos no grid (vw_ads_metricas_dia, last click) contra
+// R$ 15.377,07 / 169 na Atribuicao (vw_app_pedido, first touch) — 35% de diferenca. Empilhar as
+// duas daria uma tabela onde o pai nao bate com os filhos.
+//
+// REGRA DA FUSAO (pedido do Gabriel: "precisa ser atribuicao em tudo"): receita, pedidos, clientes
+// e margem saem SEMPRE de vw_app_pedido, em todo nivel, para todo canal. Do Meta vem apenas GASTO
+// e as colunas reportadas pela plataforma, marcadas em cinza. Assim a tela concorda com Resumo,
+// Semanal e Mensal, e filho sempre soma no pai — verificado nos 4 niveis, zero divergencia.
+//
+// Gasto de CANAL vem de vw_mvp_custo_dia (cobre google_ads e whatsapp, que o grid nao tem); nos
+// niveis abaixo vem do grid. Os dois fecham exato (61 dias, R$ 26.265,03 dos dois lados), entao o
+// gasto tambem soma de baixo para cima.
+function pgCanais(){
+ const j=jan(), A=agg(j,{canalView:true}), jf2=jf(j);
+ const PL={}, GS={};
+ for(const r of (D.grid||[])){
+  const d=String(r.dia).slice(0,10); if(!inP(d,jf2))continue;
+  const an=r.anuncio||'(sem anúncio)';
+  for(const k of [r.campanha, r.campanha+'|'+r.conjunto, r.campanha+'|'+r.conjunto+'|'+an]){
+   const o=PL[k]||(PL[k]={spend:0,impressoes:0,ob_clicks:0,plat_lpv:0,plat_atc:0,plat_checkout:0});
+   o.spend+=(+r.spend||0); o.impressoes+=(+r.impressoes||0); o.ob_clicks+=(+r.ob_clicks||0);
+   o.plat_lpv+=(+r.plat_lpv||0); o.plat_atc+=(+r.plat_atc||0); o.plat_checkout+=(+r.plat_checkout||0);
+  }
+ }
+ for(const x of spend){ if(inP(x.dia,jf2)) GS[x.fonte]=(GS[x.fonte]||0)+(+x.custo||0) }
+ const plt=(no,cam)=>no.lv===1?null:(PL[cam.split('›').slice(1).join('|')]||null);
+ const gst=(no,cam)=>{ if(no.lv===1)return GS[no.n]||0; const q=plt(no,cam); return q?q.spend:0 };
+ const cst=(sp,n)=>(!sp||!n)?null:sp/n;
+ const COLS=[
+  {k:'rec',t:'Faturamento',f:a=>R0(a.rec),v:a=>a.rec},
+  {k:'gasto',t:'Gasto',f:(a,q,g)=>g>0?R0(g):'<span class="na">—</span>',v:(a,q,g)=>g},
+  {k:'roas',t:'ROAS',f:(a,q,g)=>RT(dv(a.rec,g)),v:(a,q,g)=>dv(a.rec,g),c:'roas'},
+  {k:'ped',t:'Compras',f:a=>IN(a.ped),v:a=>a.ped},
+  {k:'cli',t:'Clientes',f:a=>IN(a.cli),v:a=>a.cli},
+  {k:'tm',t:'Ticket médio',f:a=>R$(dv(a.rec,a.ped)),v:a=>dv(a.rec,a.ped)},
+  {k:'cpa',t:'CPA',f:(a,q,g)=>R0(cst(g,a.ped)),v:(a,q,g)=>cst(g,a.ped)},
+  {k:'nov',t:'Novos',f:a=>IN(a.p_novo_avulso+a.p_novo_assinatura),v:a=>a.p_novo_avulso+a.p_novo_assinatura},
+  {k:'cac',t:'CAC',f:(a,q,g)=>R0(cst(g,a.p_novo_avulso+a.p_novo_assinatura)),
+   v:(a,q,g)=>cst(g,a.p_novo_avulso+a.p_novo_assinatura),c:'cac'},
+  {k:'asn',t:'Novos assin.',f:a=>IN(a.p_novo_assinatura+a.p_antigo_inicio_assinatura),
+   v:a=>a.p_novo_assinatura+a.p_antigo_inicio_assinatura},
+  {k:'am',t:'Amostras',f:a=>a.p_amostra?IN(a.p_amostra):'<span class="na">—</span>',v:a=>a.p_amostra},
+  {k:'cam',t:'Custo/amostra',f:(a,q,g)=>R0(cst(g,a.p_amostra)),v:(a,q,g)=>cst(g,a.p_amostra)},
+  {k:'marg',t:'Margem',f:a=>R0(a.marg),v:a=>a.marg},
+  {k:'mpr',t:'Margem/Gasto',f:(a,q,g)=>RT(dv(a.marg,g)),v:(a,q,g)=>dv(a.marg,g),c:'mpr'},
+  {k:'imp',t:'Impressões',f:(a,q)=>q?IN(q.impressoes):'<span class="na">—</span>',v:(a,q)=>q?q.impressoes:null,p:1},
+  {k:'obc',t:'OB Clicks',f:(a,q)=>q?IN(q.ob_clicks):'<span class="na">—</span>',v:(a,q)=>q?q.ob_clicks:null,p:1},
+  {k:'uv',t:'Unique Visitors',f:(a,q)=>q?IN(q.plat_lpv):'<span class="na">—</span>',v:(a,q)=>q?q.plat_lpv:null,p:1},
+  {k:'atc',t:'ATC',f:(a,q)=>q?IN(q.plat_atc):'<span class="na">—</span>',v:(a,q)=>q?q.plat_atc:null,p:1},
+  {k:'ck',t:'Start Checkout',f:(a,q)=>q?IN(q.plat_checkout):'<span class="na">—</span>',v:(a,q)=>q?q.plat_checkout:null,p:1},
+  {k:'cr',t:'CR',f:(a,q)=>(q&&q.plat_lpv)?PC(100*a.ped/q.plat_lpv,2):'<span class="na">—</span>',
+   v:(a,q)=>(q&&q.plat_lpv)?100*a.ped/q.plat_lpv:null,p:1}
+ ];
+ // Margem/Gasto vale para qualquer linha. CAC e ROAS so ganham cor com pelo menos 3 clientes novos:
+ // abaixo disso e ruido amostral, e pintar de vermelho um conjunto de amostra reprova por uma conta
+ // que ele nao tentou fazer.
+ const MIN_AQ=3;
+ const cor=(c,v,a)=>{if(v==null||!isFinite(v)||!c.c)return'';
+   if(c.c==='mpr')return v>=1?'var(--ok)':v>=.5?'var(--av)':'var(--er)';
+   if((a.p_novo_avulso+a.p_novo_assinatura)<MIN_AQ)return 'var(--t3)';
+   if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
+   return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
+ const col=COLS.find(c=>c.k===S.gord)||COLS[0];
+ const ord=l=>l.sort((x,y)=>{
+   const a=col.v(x.no.a,plt(x.no,x.cam),gst(x.no,x.cam)),
+         b=col.v(y.no.a,plt(y.no,y.cam),gst(y.no,y.cam));
+   if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
+ const out=[];
+ const linha=(no,cam)=>{
+   const filhos=no.f?Object.values(no.f).filter(x=>x.a.rec>0||x.a.ped>0):[];
+   const tem=filhos.length>0, ab=!!S.gop[cam], q=plt(no,cam), g=gst(no,cam);
+   const tds=COLS.map(c=>{const v=c.v(no.a,q,g),k=cor(c,v,no.a);
+     return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a,q,g)}</td>`}).join('');
+   out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-1)*16}px">`
+    +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`
+        :'<span style="display:inline-block;width:13px"></span>')
+    +`${no.n}</td>${tds}</tr>`);
+   if(tem&&ab) ord(filhos.map(f=>({no:f,cam:cam+'›'+f.n}))).forEach(x=>linha(x.no,x.cam));
+ };
+ let raiz=Object.values(A.arv||{}).filter(x=>x.a.rec>0||x.a.ped>0);
+ const bq=(S.gbusca||'').toLowerCase();
+ if(bq) raiz=raiz.filter(x=>x.n.toLowerCase().includes(bq)
+   ||Object.keys(x.f||{}).some(k=>String(k).toLowerCase().includes(bq)));
+ if(S.gcanal) raiz=raiz.filter(x=>x.n===S.gcanal);
+ ord(raiz.map(x=>({no:x,cam:x.n}))).forEach(x=>linha(x.no,x.cam));
+ const tot=Z(); const totG=raiz.reduce((a,x)=>a+gst(x,x.n),0);
+ raiz.forEach(x=>{for(const k in x.a)if(typeof x.a[k]==='number')tot[k]=(tot[k]||0)+x.a[k]});
+ uneKS(tot,raiz.map(x=>x.a));
+ out.push(`<tr class="tot"><td class="l fx">TOTAL</td>`
+   +COLS.map(c=>`<td class="${c.p?'t3':''}">${c.f(tot,null,totG)}</td>`).join('')+`</tr>`);
+ const th=COLS.map(c=>`<th data-gord="${c.k}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
+ const canais=Object.keys(A.arv||{}).sort();
+ const sel=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
+   +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
+ return `${avisoBalde()}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
+ <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
+  <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
+  Faturamento, compras, clientes e margem vêm sempre do pedido atribuído — por isso filho sempre
+  soma no pai e a tela concorda com Resumo e Semanal. Colunas em <span class="t3">cinza</span> são
+  reportadas pelo Meta e só existem lá.</p></div>
+  <div class="sg">${sel}<input type="search" data-gbusca placeholder="Buscar campanha..." value="${S.gbusca||''}" aria-label="Buscar campanha"></div></div>
+  <div class="tw"><table><thead><tr><th class="l fx">Canal / campanha</th>${th}</tr></thead>
+   <tbody>${out.join('')}</tbody></table></div></div>
+ <div class="sc"><div class="al o"><b>Renovação de assinatura não entra aqui.</b> Atribuir a
+  renovação de um assinante ao canal que o trouxe meses atrás não descreve nada deste período — ela
+  aparece em Resumo, Tipo de cliente e Semanal.</div>
+  <div class="al w"><b>Gasto só existe onde é coletado.</b> Meta e WhatsApp vêm por API; o Google Ads
+  não tem custo coletado e canal orgânico não tem custo nenhum. Onde não há gasto, ROAS, CPA e CAC
+  aparecem como <b>—</b>, nunca como zero.</div></div>`;
+}
+
 function pgDefinicoes(){
  const F=[
   ['ROAS','Faturamento atribuído ÷ gasto.','receita ÷ gasto','core.vw_app_pedido + vw_mvp_custo_dia','Denominador zero mostra —, nunca zero nem infinito.'],
@@ -1198,9 +1318,9 @@ function render(){
  el.innerHTML=`<div class="gr g6">${'<div class="cd"><div class="sk" style="width:55%"></div><div class="sk" style="height:24px;margin-top:9px"></div></div>'.repeat(6)}</div>`;
  requestAnimationFrame(()=>{
   try{
-   el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
+   el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='canais'?pgCanais():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
-    S.pg==='semanal'?pgSemanal():S.pg==='midia'?pgMidia():
+    S.pg==='semanal'?pgSemanal():
     S.pg==='resultado'?pgResultado():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
@@ -1229,6 +1349,7 @@ function bind(el){
  el.querySelectorAll('[data-gper]').forEach(b=>b.onclick=()=>{S.gper=b.dataset.gper;S.gop={};render()});
  el.querySelectorAll('[data-gord]').forEach(b=>b.onclick=()=>{S.gord=b.dataset.gord;render()});
  el.querySelectorAll('[data-gcanal]').forEach(b=>b.onchange=()=>{S.gcanal=b.value;S.gop={};render()});
+ el.querySelectorAll('[data-gbusca]').forEach(b=>b.onchange=()=>{S.gbusca=b.value;S.gop={};render()});
  const fi=el.querySelector('#fi'); if(fi)fi.onchange=()=>{S.ind=fi.value;render()};
  const dq=el.querySelector('#dq'); if(dq)dq.oninput=()=>{const v=dq.value.toLowerCase();
   el.querySelectorAll('#dl .df').forEach(d=>d.style.display=d.dataset.q.includes(v)?'':'none')};

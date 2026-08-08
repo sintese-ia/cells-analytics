@@ -82,7 +82,7 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
   catch (e) { console.error('FALHA: nao consegui alcancar o estado S: ' + e.message); process.exit(1); }
   ctx.S = ctx.__S;
 
-  const PGS = ['resumo','atribuicao','tipo','mensal','semanal','midia','resultado','definicoes','config'];
+  const PGS = ['resumo','canais','tipo','mensal','semanal','resultado','definicoes','config'];
   const FN = {};
   for (const n of Object.getOwnPropertyNames(ctx)) if (/^pg[A-Z]/.test(n) && typeof ctx[n] === 'function') FN[n] = ctx[n];
   console.log('ok  ' + Object.keys(FN).length + ' funcoes de pagina encontradas: ' + Object.keys(FN).join(', '));
