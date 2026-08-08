@@ -463,6 +463,7 @@ const PGS={
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
  semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
  midia:{t:'Mídia e campanhas',ic:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z'},
+ resultado:{t:'Resultado',ic:'M3 3v18h18M7 15l4-5 3 3 5-7'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
 };
@@ -934,6 +935,104 @@ function pgMensal(){
   <div class="pn">${T.html}</div></div>`;
 }
 
+/* ==================== RESULTADO — DRE de contribuicao ==================== */
+// Pedido do Gabriel em 08/08: "uma tabela sempre tipo: gasto total; custo produto (envio+cmv);
+// faturamento --> o resultado liquido real. isso sera bom inclusive para ver descontos".
+// O que essa tela adiciona e o FRETE. Todas as outras margens do painel sao `margem_antes_frete`,
+// e 93% dos pedidos de julho sairam com frete gratis — o custo existia e nao aparecia em lugar
+// nenhum. Fonte em core.vw_dre_dia (cells-infra/fixes/2026-08-08-vw-dre-dia.sql).
+//
+// NAO respeita balde nem canal de proposito: e o resultado do negocio inteiro, nao de um recorte.
+// Respeitar o filtro de canal daria um "resultado" por canal que subtrai a midia do canal mas
+// carrega o CMV do negocio todo — numero sem significado.
+function pgResultado(){
+ const j=jan(), R=(D.dre||[]).filter(r=>inP(String(r.dia).slice(0,10),j));
+ if(!R.length) return `<div class="emp">Sem dado no período. Confira <code>core.vw_dre_dia</code>.</div>`;
+ const K=['pedidos','pedidos_sem_cmv','valor_tabela','descontos','faturamento','cmv','taxas',
+          'frete_cobrado','frete_liquido','midia','margem_contribuicao','resultado'];
+ const T=Object.fromEntries(K.map(k=>[k,R.reduce((a,r)=>a+(+r[k]||0),0)]));
+ const pf=v=>T.faturamento?PC(100*v/T.faturamento):'—';
+
+ const cds=`<div class="gr g6">
+  <div class="cd"><div class="k">Faturamento</div><div class="v">${R0(T.faturamento)}</div>
+   <div class="c f">${IN(T.pedidos)} pedidos</div></div>
+  <div class="cd"><div class="k">Margem de contribuição</div><div class="v">${R0(T.margem_contribuicao)}</div>
+   <div class="c f">${pf(T.margem_contribuicao)} do faturamento</div></div>
+  <div class="cd"><div class="k">Mídia</div><div class="v">${R0(T.midia)}</div>
+   <div class="c f">${pf(T.midia)} do faturamento</div></div>
+  <div class="cd"><div class="k">Resultado</div>
+   <div class="v" style="color:${T.resultado>=0?'var(--ok)':'var(--er)'}">${R0(T.resultado)}</div>
+   <div class="c f">antes de custo fixo</div></div></div>`;
+
+ const L=(n,v,sinal,forte,dica)=>`<tr${forte?' class="tot"':''}>
+   <td class="l fx">${sinal||''} ${n}${dica?` <span class="t3" title="${dica}">ⓘ</span>`:''}</td>
+   <td style="text-align:right${forte?';font-weight:700':''}${v<0&&forte?';color:var(--er)':''}">${R0(v)}</td>
+   <td style="text-align:right" class="t3">${pf(v)}</td></tr>`;
+ const cascata=`<div class="tw"><table><thead><tr>
+   <th class="l fx">Linha</th><th style="text-align:right">Valor</th>
+   <th style="text-align:right">% do faturamento</th></tr></thead><tbody>
+  ${L('Valor de tabela',T.valor_tabela,'','',
+      'Soma dos pedidos antes de desconto (total_price + total_discounts).')}
+  ${L('Descontos',-T.descontos,'(−)','',
+      'Cupons e promoções concedidos. Em julho foi 5,9% do valor de tabela.')}
+  ${L('Faturamento cobrado',T.faturamento,'=','1')}
+  ${L('Custo do produto (CMV)',-T.cmv,'(−)','',
+      'Custo unitário por SKU em commerce.produto_custo.')}
+  ${L('Taxas e impostos',-T.taxas,'(−)','',
+      'Gateway 4% + Shopify 2% + Simples 6% + provisão de devolução 0,7% = 12,7%.')}
+  ${L('Frete líquido',-T.frete_liquido,'(−)','',
+      'Custo de envio menos o frete cobrado do cliente. O custo usa o parâmetro declarado frete_medio_por_envio.')}
+  ${L('MARGEM DE CONTRIBUIÇÃO',T.margem_contribuicao,'=','1')}
+  ${L('Mídia',-T.midia,'(−)','','Meta e WhatsApp por API. Google Ads não tem custo coletado.')}
+  ${L('RESULTADO',T.resultado,'=','1')}
+ </tbody></table></div>`;
+
+ // serie mensal
+ const M2={};
+ for(const r of R){const k=String(r.dia).slice(0,7); const o=M2[k]||(M2[k]=Object.fromEntries(K.map(x=>[x,0])));
+   K.forEach(x=>o[x]+=(+r[x]||0))}
+ const meses=Object.entries(M2).sort((a,b)=>a[0]<b[0]?1:-1);
+ const serie=`<div class="tw"><table><thead><tr><th class="l fx">Mês</th>
+   <th style="text-align:right">Faturamento</th><th style="text-align:right">Descontos</th>
+   <th style="text-align:right">CMV</th><th style="text-align:right">Taxas</th>
+   <th style="text-align:right">Frete</th><th style="text-align:right">Margem contrib.</th>
+   <th style="text-align:right">Mídia</th><th style="text-align:right">Resultado</th></tr></thead><tbody>
+  ${meses.map(([k,o])=>`<tr><td class="l fx">${k}</td>
+    <td style="text-align:right">${R0(o.faturamento)}</td>
+    <td style="text-align:right" class="t3">${R0(o.descontos)}</td>
+    <td style="text-align:right" class="t3">${R0(o.cmv)}</td>
+    <td style="text-align:right" class="t3">${R0(o.taxas)}</td>
+    <td style="text-align:right" class="t3">${R0(o.frete_liquido)}</td>
+    <td style="text-align:right">${R0(o.margem_contribuicao)}</td>
+    <td style="text-align:right" class="t3">${R0(o.midia)}</td>
+    <td style="text-align:right;font-weight:650;color:${o.resultado>=0?'var(--ok)':'var(--er)'}">${R0(o.resultado)}</td>
+    </tr>`).join('')}
+ </tbody></table></div>`;
+
+ const avisos=[
+  `<div class="al w"><b>Isto é margem de contribuição, não lucro.</b> Não há custo fixo aqui —
+   salário, pró-labore, ferramenta, contabilidade. "Resultado" positivo não significa empresa no azul.</div>`,
+  `<div class="al w"><b>O frete é premissa declarada, não custo real por pedido.</b> O valor de
+   envio está no Bling (<code>logisticas/objetos</code>), não no Postgres. Aqui entra como
+   <code>frete_medio_por_envio</code> — hoje <b>R$ 14,48</b>, média de 829 envios de 2026. Trocar o
+   parâmetro muda a série inteira.</div>`,
+  T.pedidos_sem_cmv>0
+   ? `<div class="al c"><b>${IN(T.pedidos_sem_cmv)} ${T.pedidos_sem_cmv===1?'pedido entra':'pedidos entram'} com CMV zero.</b>
+      ${T.pedidos_sem_cmv===1?'Ele não tem':'Eles não têm'} custo cadastrado em
+      <code>commerce.produto_custo</code>, então ${T.pedidos_sem_cmv===1?'entra':'entram'} com custo
+      zero e <b>inflam a margem</b> deste período.</div>` : '',
+  `<div class="al o"><b>Esta tela ignora os filtros de balde e de canal.</b> É o resultado do
+   negócio inteiro. Um "resultado por canal" subtrairia a mídia do canal mas carregaria o CMV do
+   negócio todo — número sem significado.</div>`
+ ].join('');
+
+ return `${cds}
+ <div class="sc"><div class="sch"><div><h2>Da venda ao resultado</h2>
+  <p>Cada linha do período, e quanto ela pesa sobre o faturamento.</p></div></div>${cascata}</div>
+ <div class="sc"><div class="sch"><div><h2>Mês a mês</h2></div></div>${serie}</div>
+ <div class="sc">${avisos}</div>`;
+}
+
 function pgDefinicoes(){
  const F=[
   ['ROAS','Faturamento atribuído ÷ gasto.','receita ÷ gasto','core.vw_app_pedido + vw_mvp_custo_dia','Denominador zero mostra —, nunca zero nem infinito.'],
@@ -1063,6 +1162,7 @@ function render(){
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='atribuicao'?pgAtribuicao():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
     S.pg==='semanal'?pgSemanal():S.pg==='midia'?pgMidia():
+    S.pg==='resultado'?pgResultado():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>

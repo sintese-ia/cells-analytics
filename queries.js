@@ -105,6 +105,14 @@ from core.vw_payback_coorte order by mes, canal`,
   // O gasto agora pertence a conta (ver `custoBalde` no template) e custo por amostra virou
   // coluna de CONJUNTO no grid, onde as duas contas aparecem lado a lado sem esconder linha.
   // A tabela core.campanha_objetivo continua no banco, sem uso pelo app.
+  // DRE de contribuicao por dia. Fecha o buraco do FRETE: a `margem` das outras views e
+  // `margem_antes_frete` e o custo de envio nao entrava de lado nenhum, sendo que 93% dos pedidos
+  // de julho sairam com frete gratis. O custo vem do parametro declarado `frete_medio_por_envio`
+  // (Bling, media 2026 = R$ 14,48) ate o custo real por pedido ser sincronizado.
+  // Ver cells-infra/fixes/2026-08-08-vw-dre-dia.sql.
+  dre: `select dia, pedidos, pedidos_sem_cmv, valor_tabela, descontos, faturamento,
+   cmv, taxas, frete_cobrado, frete_liquido, midia, margem_contribuicao, resultado
+  from core.vw_dre_dia where dia >= '2025-01-01'`,
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,
