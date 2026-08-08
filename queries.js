@@ -7,12 +7,16 @@ module.exports = {
   // inteiro — o custo de payload e irrelevante perto de errar o numero.
   // Piso em 2025-01-01: o banco comeca em 16/01/2025 e o painel so enxergava 2026, entao o total
   // de clientes nunca podia fechar (1.206 pagantes no historico, 1.391 com amostra).
+  // `campanha` no grao desde 08/08: sem ela o painel so enxergava CANAL, e canal de creator seria
+  // uma linha unica chamada "creator" — impossivel comparar creator com creator. Custo medido:
+  // 1.145 -> 1.229 grupos (+7%), 78 campanhas distintas no historico.
   dias: `with b as (
- select created_at, canal, canal_aq, sistema, categoria, bruto, desconto, reembolso,
+ select created_at, canal, canal_aq, sistema, categoria, campanha, bruto, desconto, reembolso,
         liquido, cmv, margem, cmv_ok, basis,
         dense_rank() over (order by coalesce(cid,email)) kid
    from core.vw_app_pedido where created_at>='2025-01-01')
 select created_at::date dia, canal, canal_aq, sistema, categoria,
+ nullif(campanha,'') campanha,
  count(*) pedidos, count(distinct kid) clientes, array_agg(distinct kid) ks,
  round(sum(bruto)::numeric,2) bruto, round(sum(desconto)::numeric,2) desc_,
  round(sum(reembolso)::numeric,2) reemb, round(sum(liquido)::numeric,2) liq,
@@ -20,7 +24,7 @@ select created_at::date dia, canal, canal_aq, sistema, categoria,
  sum((cmv_ok)::int) cmv_ok,
  sum((coalesce(basis,'session') in ('session','landing'))::int) med,
  sum((basis='inherited')::int) inf
-from b group by 1,2,3,4,5`,
+from b group by 1,2,3,4,5,6`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita

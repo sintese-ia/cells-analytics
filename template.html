@@ -292,7 +292,7 @@ function Z(){const o={rec:0,bruto:0,desc:0,reemb:0,cmv:0,marg:0,ped:0,cli:0,cmv_
 function uneKS(destino,fontes){for(const f of fontes){if(f&&f.ks)for(const k of f.ks)destino.ks.add(k)}
  destino.cli=destino.ks.size;return destino}
 function agg(j,{canalView=false}={}){
- const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{}});
+ const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{},cmp:{}});
  if(!j)return A;
  for(const r of dias){
   if(!inP(r.dia,j))continue;
@@ -307,7 +307,11 @@ function agg(j,{canalView=false}={}){
   const v=val(r);
   const o=A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
   const k=A.cat[r.categoria]||(A.cat[r.categoria]=Object.assign(Z(),{categoria:r.categoria}));
-  for(const t of [A,o,k]){
+  // (canal, campanha): e o grao onde o creator aparece. Com utm_campaign=nomedocreator, cada
+  // creator vira uma linha aqui em vez de sumir dentro de um canal chamado "creator".
+  const nomeC=r.campanha||'(sem campanha)';
+  const cp=A.cmp[c+'|'+nomeC]||(A.cmp[c+'|'+nomeC]=Object.assign(Z(),{canal:c,campanha:nomeC}));
+  for(const t of [A,o,k,cp]){
    t.rec+=v;t.bruto+=r.bruto;t.desc+=r.desc_;t.reemb+=r.reemb;t.cmv+=r.cmv;t.marg+=r.marg;
    t.ped+=r.pedidos;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
    if(r.ks)for(const x of r.ks)t.ks.add(x);
@@ -317,6 +321,7 @@ function agg(j,{canalView=false}={}){
  A.cli=A.ks.size;
  for(const o of Object.values(A.can))o.cli=o.ks.size;
  for(const k of Object.values(A.cat))k.cli=k.ks.size;
+ for(const c of Object.values(A.cmp))c.cli=c.ks.size;
  for(const s of spend){
   if(!inP(s.dia,j))continue;
   if(S.can&&s.fonte!==S.can)continue;
@@ -799,7 +804,37 @@ function pgAtribuicao(){
  <div class="sc"><div class="sch"><div><h2>Atribuição por canal</h2>
   <p>Clique na linha para aprofundar. Clique no cabeçalho para ordenar. Colunas em laranja são exclusivas da Cells.</p></div>
   <input type="search" id="bq" placeholder="Buscar canal..." aria-label="Buscar canal" value="${S._q||''}"></div>
-  <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>`;
+  <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>
+ ${tabelaCampanha(A)}`;
+}
+
+// CAMPANHA DENTRO DO CANAL. Sem isto, canal de creator seria UMA linha chamada "creator" e nao
+// daria para comparar creator com creator. Com utm_campaign=nomedocreator, cada creator vira uma
+// linha aqui. Vale igual para email, whatsapp e parceria — qualquer canal que use utm_campaign.
+// utm_medium NAO serve para isso: core.bridge_order_session guarda source/campaign/content/term e
+// DESCARTA o medium, entao nome que va para o medium nunca chega no pedido.
+function tabelaCampanha(A){
+ const rows=Object.values(A.cmp||{}).filter(r=>r.rec>0||r.ped>0)
+   .sort((a,b)=>b.rec-a.rec).slice(0,60);
+ if(!rows.length) return '';
+ const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},Z());
+ uneKS(tot,rows);
+ const T=TB([
+  {k:'ca',t:'Canal',l:1,fx:1,f:r=>`<span class="pl g">${r.canal}</span>`,raw:r=>r.canal,tf:()=>'<b>Total</b>'},
+  {k:'cp',t:'Campanha',l:1,f:r=>r.campanha==='(sem campanha)'?'<span class="na">(sem campanha)</span>':r.campanha,raw:r=>r.campanha},
+  {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
+  {k:'p',t:'Compras',f:r=>IN(r.ped),raw:r=>r.ped,tf:t=>IN(t.ped)},
+  {k:'c',t:'Clientes',f:r=>IN(r.cli),raw:r=>r.cli,tf:t=>IN(t.cli)},
+  {k:'tm',t:'Ticket médio',f:r=>R$(dv(r.rec,r.ped)),raw:r=>dv(r.rec,r.ped)??0,tf:t=>R$(dv(t.rec,t.ped))},
+  {k:'n',t:'Novos',f:r=>IN(r.p_novo_avulso+r.p_novo_assinatura),raw:r=>r.p_novo_avulso+r.p_novo_assinatura,
+   tf:t=>IN(t.p_novo_avulso+t.p_novo_assinatura)},
+  {k:'m',t:'Margem',f:r=>R0(r.marg),raw:r=>r.marg,tf:t=>R0(t.marg)}
+ ],rows,tot);
+ return `<div class="sc"><div class="sch"><div><h2>Campanha dentro do canal</h2>
+  <p>O que veio no <code>utm_campaign</code> de cada pedido. É aqui que <b>creator aparece por nome</b> —
+  basta a UTM ser <code>utm_source=creator&amp;utm_campaign=nomedocreator</code>.
+  Sem gasto: canal orgânico e de parceria não tem custo coletado, então ROAS e CAC não aparecem.</p></div></div>
+  <div class="pn">${T.html}</div></div>`;
 }
 
 function pgTipoCliente(){
