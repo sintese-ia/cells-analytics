@@ -597,6 +597,14 @@ function pgMidia(){
   {k:'nccpa',t:'NC CPA',f:a=>R0(cst(a.spend,a.nc_pedidos)),v:a=>cst(a.spend,a.nc_pedidos),c:'cac'},
   {k:'ncroas',t:'NC ROAS',f:a=>RT(a.spend?dv(a.nc_receita,a.spend):null),v:a=>a.spend?dv(a.nc_receita,a.spend):null},
   {k:'ncpp',t:'NC PP',f:a=>R0(dv(a.nc_margem,a.nc_pedidos)),v:a=>dv(a.nc_margem,a.nc_pedidos)},
+  // A RESPOSTA PARA CONJUNTO MISTO. Um conjunto que entrega amostra E compra nao precisa ter o
+  // gasto rateado: a margem ja soma tudo que ele fez, cada pedido valendo o que realmente deixou
+  // (amostra R$ 22,37 · novo avulso R$ 113,16 · 1a de assinatura R$ 99,67 — julho/2026).
+  // Acima de 1 o conjunto se paga na primeira compra. Julho inteiro ficou abaixo, o que bate com
+  // o payback medido de 0,42x — nao e alarme novo, e o estado conhecido da conta.
+  {k:'mpr',t:'Margem/Gasto',
+   tip:'Margem realizada ÷ gasto. Conta o que o pedido deixou de fato, sem projetar renovação nem conversão futura de amostra. Acima de 1 o conjunto se paga na primeira compra.',
+   f:a=>RT(a.spend?dv(a.margem,a.spend):null),v:a=>a.spend?dv(a.margem,a.spend):null,c:'mpr'},
   {k:'cr',t:'CR',f:a=>PC(dv(100*a.pedidos,a.plat_lpv),2),v:a=>dv(100*a.pedidos,a.plat_lpv),p:1},
   {k:'atc',t:'ATC',f:a=>nf(a.plat_atc,0),v:a=>a.plat_atc,p:1},
   {k:'catc',t:'Cost ATC',f:a=>R0(cst(a.spend,a.plat_atc)),v:a=>cst(a.spend,a.plat_atc),p:1},
@@ -623,6 +631,9 @@ function pgMidia(){
  // numero continua na tela, em cinza — e ruido amostral, nao veredito.
  const MIN_AQ=3;
  const cor=(c,v,a)=>{if(v==null||!c.c)return'';
+   // Margem/Gasto vale para qualquer conjunto, inclusive o que so entrega amostra — e justamente
+   // a coluna que compara conjunto misto com conjunto puro. Nao passa pelo piso de aquisicao.
+   if(c.c==='mpr')return v>=1?'var(--ok)':v>=.5?'var(--av)':'var(--er)';
    if((a.nc_estrito||a.nc_pedidos||0)<MIN_AQ) return 'var(--t3)';
    if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
    return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
