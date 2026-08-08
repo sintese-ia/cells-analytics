@@ -13,15 +13,44 @@ module.exports = {
   // 169) — first click contra last click. Empilhar as duas daria um pai que nao bate com os
   // filhos. Agora receita, pedidos, clientes e margem saem TODOS de vw_app_pedido em qualquer
   // nivel; do grid do Meta vem so gasto e as colunas reportadas pela plataforma.
-  // `anuncio` vem de bridge_order_session.first_touch_term (212 de 242 pedidos em julho).
+  // A hierarquia vem da PROPRIA SESSAO DE ORIGEM (web.sessions via first_session_id), nao dos
+  // campos first_touch_* do bridge. Motivo, achado pelo Gabriel em 08/08: o bridge monta o first
+  // touch pegando o primeiro valor nao-vazio de CADA CAMPO separadamente, e nao todos os campos da
+  // mesma sessao. O pedido 7711120261254 saiu com campanha '22181464268' (Google, sessao de 22/07)
+  // e conjunto 'W1_ELETROLITO' (Meta, sessao de 28/07) — conjunto do Meta pendurado embaixo do
+  // Google na tela. Sao 93 pedidos com campos de sessoes diferentes.
+  // Lendo da sessao, os quatro campos passam a descrever o MESMO clique.
+  // `canal_aq` continua vindo do bridge: ROAS e CAC por canal nao mudam, so a hierarquia abaixo.
   // Custo do grao mais fino: 1.241 -> 1.327 grupos (+7%).
   dias: `with b as (
- select p.created_at, p.canal, p.canal_aq, p.sistema, p.categoria, p.campanha, p.adset,
-        s.first_touch_term anuncio,
+ select p.created_at, p.canal, p.canal_aq, p.sistema, p.categoria,
+        -- SE A SESSAO EXISTE, ELA MANDA — inclusive quando esta vazia. Cair de volta no bridge
+        -- quando a sessao vem vazia foi o que reintroduziu o Frankenstein: 4 pedidos com sessao de
+        -- origem SEM campanha nenhuma apareciam com '2026_06_VENDAS' pendurado embaixo de 'direct'.
+        -- Bridge so entra quando nao ha sessao (woo legado, pedido importado) — ai nao ha o que checar.
+        case when s.first_session_id is null then p.campanha
+             when fs.coerente then nullif(fs.utm_campaign,'') end campanha,
+        case when s.first_session_id is null then p.adset
+             when fs.coerente then nullif(fs.utm_content,'')  end adset,
+        case when s.first_session_id is null then null
+             when fs.coerente then nullif(fs.utm_term,'')     end anuncio,
         p.bruto, p.desconto, p.reembolso, p.liquido, p.cmv, p.margem, p.cmv_ok, p.basis,
         dense_rank() over (order by coalesce(p.cid,p.email)) kid
    from core.vw_app_pedido p
    left join core.bridge_order_session s on s.order_id = p.order_id
+   left join lateral (
+     select w.utm_campaign, w.utm_content, w.utm_term,
+            -- COERENCIA: so aproveita a hierarquia se a sessao for do MESMO canal que canal_aq.
+            -- google_ads e google_organico contam como o mesmo 'google' (o que os separa e o gclid,
+            -- nao a campanha). Quando diverge, campanha/conjunto/anuncio ficam NULOS e a linha cai
+            -- em "(sem campanha)" — melhor um vazio honesto que uma campanha do canal errado.
+            coalesce(regexp_replace(coalesce(fc.canal, w.source_norm, ''), '^google_.*$', 'google'), '')
+              = regexp_replace(p.canal_aq, '^google_.*$', 'google') as coerente
+       from web.sessions w
+       left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
+      where w.session_id = s.first_session_id
+      order by w.timestamp
+      limit 1) fs on true
   where p.created_at>='2025-01-01')
 select created_at::date dia, canal, canal_aq, sistema, categoria,
  nullif(campanha,'') campanha, nullif(adset,'') conjunto, nullif(anuncio,'') anuncio,

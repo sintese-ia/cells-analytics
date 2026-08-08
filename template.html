@@ -287,7 +287,7 @@ const cCan=r=>S.eixo==='aquisicao'?r.canal_aq:r.canal;
 // (que contava cinco vezes quem comprou em cinco dias: 1.053 contra 624 reais no ano de 2026) e
 // passa a ser o tamanho da UNIAO. Fecha sozinho tambem Receita por cliente, que saia 41% baixa.
 function Z(){const o={rec:0,bruto:0,desc:0,reemb:0,cmv:0,marg:0,ped:0,cli:0,cmv_ok:0,med:0,inf:0,spend:0,ks:new Set()};
- for(const c of ORD){o['r_'+c]=0;o['p_'+c]=0}return o}
+ for(const c of ORD){o['r_'+c]=0;o['p_'+c]=0;o['m_'+c]=0}return o}
 // une os `ks` de uma lista de baldes e recalcula `cli`. Chamar sempre que somar baldes na mao.
 function uneKS(destino,fontes){for(const f of fontes){if(f&&f.ks)for(const k of f.ks)destino.ks.add(k)}
  destino.cli=destino.ks.size;return destino}
@@ -322,7 +322,7 @@ function agg(j,{canalView=false}={}){
    t.rec+=v;t.bruto+=r.bruto;t.desc+=r.desc_;t.reemb+=r.reemb;t.cmv+=r.cmv;t.marg+=r.marg;
    t.ped+=r.pedidos;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
    if(r.ks)for(const x of r.ks)t.ks.add(x);
-   t['r_'+r.categoria]+=v;t['p_'+r.categoria]+=r.pedidos}
+   t['r_'+r.categoria]+=v;t['p_'+r.categoria]+=r.pedidos;t['m_'+r.categoria]+=r.marg}
  }
  // cli = tamanho da uniao, nunca soma de contagens
  A.cli=A.ks.size;
@@ -353,7 +353,7 @@ function serie(j,g,diaMax){
   if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
   if(S.bal&&!balCats(S.bal).includes(r.categoria))continue;
   const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
-  o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos;
+  o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos;o['m_'+r.categoria]+=r.marg;
   if(r.ks)for(const x of r.ks)o.ks.add(x)}
  for(const o of Object.values(m))o.cli=o.ks.size;
  for(const s of spend){
@@ -668,7 +668,7 @@ function pgMidia(){
  for(const n of lst){ if(S.gsp&&!n.a.spend) continue; linha(n,n.n); }
  const tot=Z0(); lst.forEach(n=>som(tot,n.a));
  out.push(`<tr class="tot"><td class="l fx">TOTAL</td>${COLS.map(c=>`<td>${c.f(tot)}</td>`).join('')}</tr>`);
- const th=COLS.map(c=>`<th data-gord="${c.k}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
+ const th=VIS.map(c=>`<th data-gord="${c.k}" title="${c.tip||''}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
  const per=[['7','7 dias'],['14','14 dias'],['30','30 dias'],['60','60 dias']]
    .map(([v,t])=>`<button data-gper="${v}" class="${String(S.gper)===v?'on':''}">${t}</button>`).join('');
  const canais=[...raiz.keys()].sort();
@@ -1109,27 +1109,45 @@ function pgCanais(){
  const plt=(no,cam)=>no.lv===1?null:(PL[cam.split('›').slice(1).join('|')]||null);
  const gst=(no,cam)=>{ if(no.lv===1)return GS[no.n]||0; const q=plt(no,cam); return q?q.spend:0 };
  const cst=(sp,n)=>(!sp||!n)?null:sp/n;
+ // O CONJUNTO COMPLETO. A tela antiga de Midia tinha 23 colunas e a fusao tinha derrubado seis
+ // (Conta, NC ROAS, NC PP, Cost ATC, CPV, OB CTR). Voltaram todas — mas as de negocio agora saem
+ // da ATRIBUICAO, nao do grid: `conta` e a soma das 4 categorias da conta, `nc_*` sai de
+ // novo_avulso + novo_assinatura. Cinza (p:1) = reportado pelo Meta, so existe la.
+ const NC=a=>a.p_novo_avulso+a.p_novo_assinatura;
+ const NCR=a=>a.r_novo_avulso+a.r_novo_assinatura;
+ const NCM=a=>a.m_novo_avulso+a.m_novo_assinatura;
+ const CONTA=a=>a.r_novo_avulso+a.r_antigo_avulso+a.r_novo_assinatura+a.r_antigo_inicio_assinatura;
  const COLS=[
   {k:'rec',t:'Faturamento',f:a=>R0(a.rec),v:a=>a.rec},
+  {k:'conta',t:'Conta',tip:'Novos + recompra + novos assinantes. Amostra e MRR ficam fora.',
+   f:a=>R0(CONTA(a)),v:a=>CONTA(a)},
   {k:'gasto',t:'Gasto',f:(a,q,g)=>g>0?R0(g):'<span class="na">—</span>',v:(a,q,g)=>g},
   {k:'roas',t:'ROAS',f:(a,q,g)=>RT(dv(a.rec,g)),v:(a,q,g)=>dv(a.rec,g),c:'roas'},
   {k:'ped',t:'Compras',f:a=>IN(a.ped),v:a=>a.ped},
   {k:'cli',t:'Clientes',f:a=>IN(a.cli),v:a=>a.cli},
-  {k:'tm',t:'Ticket médio',f:a=>R$(dv(a.rec,a.ped)),v:a=>dv(a.rec,a.ped)},
+  {k:'aov',t:'AOV',f:a=>R$(dv(a.rec,a.ped)),v:a=>dv(a.rec,a.ped)},
   {k:'cpa',t:'CPA',f:(a,q,g)=>R0(cst(g,a.ped)),v:(a,q,g)=>cst(g,a.ped)},
-  {k:'nov',t:'Novos',f:a=>IN(a.p_novo_avulso+a.p_novo_assinatura),v:a=>a.p_novo_avulso+a.p_novo_assinatura},
-  {k:'cac',t:'CAC',f:(a,q,g)=>R0(cst(g,a.p_novo_avulso+a.p_novo_assinatura)),
-   v:(a,q,g)=>cst(g,a.p_novo_avulso+a.p_novo_assinatura),c:'cac'},
-  {k:'asn',t:'Novos assin.',f:a=>IN(a.p_novo_assinatura+a.p_antigo_inicio_assinatura),
+  {k:'nov',t:'NCP',tip:'Clientes novos, pela atribuição de aquisição (first touch).',
+   f:a=>IN(NC(a)),v:a=>NC(a)},
+  {k:'cac',t:'NC CPA',f:(a,q,g)=>R0(cst(g,NC(a))),v:(a,q,g)=>cst(g,NC(a)),c:'cac'},
+  {k:'ncroas',t:'NC ROAS',f:(a,q,g)=>RT(dv(NCR(a),g)),v:(a,q,g)=>dv(NCR(a),g)},
+  {k:'ncpp',t:'NC PP',tip:'Margem por pedido de cliente novo.',
+   f:a=>R0(dv(NCM(a),NC(a))),v:a=>dv(NCM(a),NC(a))},
+  {k:'asn',t:'New Subs',f:a=>IN(a.p_novo_assinatura+a.p_antigo_inicio_assinatura),
    v:a=>a.p_novo_assinatura+a.p_antigo_inicio_assinatura},
-  {k:'am',t:'Amostras',f:a=>a.p_amostra?IN(a.p_amostra):'<span class="na">—</span>',v:a=>a.p_amostra},
-  {k:'cam',t:'Custo/amostra',f:(a,q,g)=>R0(cst(g,a.p_amostra)),v:(a,q,g)=>cst(g,a.p_amostra)},
+  {k:'am',t:'Samples',f:a=>a.p_amostra?IN(a.p_amostra):'<span class="na">—</span>',v:a=>a.p_amostra},
+  {k:'cam',t:'Cost/Sample',f:(a,q,g)=>R0(cst(g,a.p_amostra)),v:(a,q,g)=>cst(g,a.p_amostra)},
   {k:'marg',t:'Margem',f:a=>R0(a.marg),v:a=>a.marg},
-  {k:'mpr',t:'Margem/Gasto',f:(a,q,g)=>RT(dv(a.marg,g)),v:(a,q,g)=>dv(a.marg,g),c:'mpr'},
+  {k:'mpr',t:'Margem/Gasto',tip:'Margem realizada ÷ gasto. Acima de 1 se paga na primeira compra.',
+   f:(a,q,g)=>RT(dv(a.marg,g)),v:(a,q,g)=>dv(a.marg,g),c:'mpr'},
   {k:'imp',t:'Impressões',f:(a,q)=>q?IN(q.impressoes):'<span class="na">—</span>',v:(a,q)=>q?q.impressoes:null,p:1},
   {k:'obc',t:'OB Clicks',f:(a,q)=>q?IN(q.ob_clicks):'<span class="na">—</span>',v:(a,q)=>q?q.ob_clicks:null,p:1},
+  {k:'obctr',t:'OB CTR',f:(a,q)=>(q&&q.impressoes)?PC(100*q.ob_clicks/q.impressoes,2):'<span class="na">—</span>',
+   v:(a,q)=>(q&&q.impressoes)?100*q.ob_clicks/q.impressoes:null,p:1},
   {k:'uv',t:'Unique Visitors',f:(a,q)=>q?IN(q.plat_lpv):'<span class="na">—</span>',v:(a,q)=>q?q.plat_lpv:null,p:1},
+  {k:'cpv',t:'CPV',f:(a,q,g)=>R$(cst(g,q&&q.plat_lpv)),v:(a,q,g)=>cst(g,q&&q.plat_lpv),p:1},
   {k:'atc',t:'ATC',f:(a,q)=>q?IN(q.plat_atc):'<span class="na">—</span>',v:(a,q)=>q?q.plat_atc:null,p:1},
+  {k:'catc',t:'Cost ATC',f:(a,q,g)=>R0(cst(g,q&&q.plat_atc)),v:(a,q,g)=>cst(g,q&&q.plat_atc),p:1},
   {k:'ck',t:'Start Checkout',f:(a,q)=>q?IN(q.plat_checkout):'<span class="na">—</span>',v:(a,q)=>q?q.plat_checkout:null,p:1},
   {k:'cr',t:'CR',f:(a,q)=>(q&&q.plat_lpv)?PC(100*a.ped/q.plat_lpv,2):'<span class="na">—</span>',
    v:(a,q)=>(q&&q.plat_lpv)?100*a.ped/q.plat_lpv:null,p:1}
@@ -1143,7 +1161,8 @@ function pgCanais(){
    if((a.p_novo_avulso+a.p_novo_assinatura)<MIN_AQ)return 'var(--t3)';
    if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
    return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
- const col=COLS.find(c=>c.k===S.gord)||COLS[0];
+ const TODAS=COLS, VIS=COLS.filter(c=>!(S.oc[S.pg]||{})[c.k]);
+ const col=VIS.find(c=>c.k===S.gord)||VIS[0];
  const ord=l=>l.sort((x,y)=>{
    const a=col.v(x.no.a,plt(x.no,x.cam),gst(x.no,x.cam)),
          b=col.v(y.no.a,plt(y.no,y.cam),gst(y.no,y.cam));
@@ -1152,7 +1171,7 @@ function pgCanais(){
  const linha=(no,cam)=>{
    const filhos=no.f?Object.values(no.f).filter(x=>x.a.rec>0||x.a.ped>0):[];
    const tem=filhos.length>0, ab=!!S.gop[cam], q=plt(no,cam), g=gst(no,cam);
-   const tds=COLS.map(c=>{const v=c.v(no.a,q,g),k=cor(c,v,no.a);
+   const tds=VIS.map(c=>{const v=c.v(no.a,q,g),k=cor(c,v,no.a);
      return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a,q,g)}</td>`}).join('');
    out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-1)*16}px">`
     +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`
@@ -1170,8 +1189,8 @@ function pgCanais(){
  raiz.forEach(x=>{for(const k in x.a)if(typeof x.a[k]==='number')tot[k]=(tot[k]||0)+x.a[k]});
  uneKS(tot,raiz.map(x=>x.a));
  out.push(`<tr class="tot"><td class="l fx">TOTAL</td>`
-   +COLS.map(c=>`<td class="${c.p?'t3':''}">${c.f(tot,null,totG)}</td>`).join('')+`</tr>`);
- const th=COLS.map(c=>`<th data-gord="${c.k}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
+   +VIS.map(c=>`<td class="${c.p?'t3':''}">${c.f(tot,null,totG)}</td>`).join('')+`</tr>`);
+ const th=VIS.map(c=>`<th data-gord="${c.k}" title="${c.tip||''}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
  const canais=Object.keys(A.arv||{}).sort();
  const sel=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
    +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
@@ -1182,6 +1201,7 @@ function pgCanais(){
   soma no pai e a tela concorda com Resumo e Semanal. Colunas em <span class="t3">cinza</span> são
   reportadas pelo Meta e só existem lá.</p></div>
   <div class="sg">${sel}<input type="search" data-gbusca placeholder="Buscar campanha..." value="${S.gbusca||''}" aria-label="Buscar campanha"></div></div>
+  <div class="pnh"><h3>Colunas</h3>${colToggle(TODAS)}</div>
   <div class="tw"><table><thead><tr><th class="l fx">Canal / campanha</th>${th}</tr></thead>
    <tbody>${out.join('')}</tbody></table></div></div>
  <div class="sc"><div class="al o"><b>Renovação de assinatura não entra aqui.</b> Atribuir a
