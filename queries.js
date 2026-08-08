@@ -98,15 +98,13 @@ from core.vw_payback_coorte order by mes, canal`,
   ksem: `select * from core.vw_kpi_semana where semana >= current_date - 120 order by semana`,
   kmes: `select * from core.vw_kpi_mes where mes >= '2026-05-01' order by mes`,
   plano:`select * from core.plano_mes order by mes`,
-  // Objetivo DECLARADO do conjunto, com vigencia — intencao nao se deduz do resultado.
-  // Conjunto de amostra e julgado por custo por amostra, nunca por CAC: o CJ_kit_exp aparecia
-  // com CAC de R$ 940 pintado de vermelho e nunca tentou comprar cliente direto.
-  // DDL e a classificacao em cells-infra/fixes/2026-08-07-campanha-objetivo.sql.
-  // SEM janela de tempo. Com `dia >= current_date - 90` todo periodo mais antigo caia no default
-  // 'venda', e o balde Amostras em "Todo o historico" mostrava gasto zero — o painel dizia que a
-  // amostra saiu de graca. Sao 1.293 linhas no historico inteiro; a janela nao economizava nada.
-  objetivo: `select dia, conjunto, objetivo, classificado
- from core.vw_campanha_objetivo_dia`,
+  // REMOVIDA em 08/08/2026: a query `objetivo` (core.vw_campanha_objetivo_dia). A ideia era rotular
+  // cada conjunto como amostra/venda/topo para dividir o gasto por balde. O dado derrubou a
+  // premissa: o mesmo conjunto entrega os dois. Em julho o W1_ENERGETICO fez 11 amostras + 5
+  // compras de aquisicao + 2 assinaturas novas com um orcamento so. Rotular escondia metade.
+  // O gasto agora pertence a conta (ver `custoBalde` no template) e custo por amostra virou
+  // coluna de CONJUNTO no grid, onde as duas contas aparecem lado a lado sem esconder linha.
+  // A tabela core.campanha_objetivo continua no banco, sem uso pelo app.
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,

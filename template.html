@@ -184,58 +184,40 @@ const BALDE={
 };
 const balCats=b=>BALDE[b]?BALDE[b].cats:null;
 
-// Objetivo DECLARADO por (dia, conjunto). Default 'venda' para quem nao foi classificado — o
-// default nunca esconde nada. Ver cells-infra/fixes/2026-08-07-campanha-objetivo.sql.
-const OBJ={}; (D.objetivo||[]).forEach(r=>{OBJ[String(r.dia).slice(0,10)+'|'+r.conjunto]=r.objetivo});
-const objDe=(dia,conj)=>OBJ[String(dia).slice(0,10)+'|'+conj]||'venda';
-// A visao de midia segue o balde. Em COMPRAS, conjunto cujo objetivo e amostra sai da tabela:
-// o CAC dele nao e metrica valida — o CJ_kit_exp entregou 85 amostras e 2 clientes diretos, e
-// aparecia com CAC de R$ 940 pintado de vermelho por uma conta que ele nunca tentou fazer.
-// 'topo' NUNCA some: sumir com o gasto e pior que mostra-lo marcado.
-const passaObj=(dia,conj)=>{ if(!S.bal||S.bal==='mrr')return true;
- const o=objDe(dia,conj);
- return S.bal==='amostra' ? o==='amostra' : o!=='amostra'; };
 const avisoMRR=`<div class="al w"><b>MRR não tem campanha.</b> É renovação de assinante de mês
  anterior — a mídia deste mês não a causou, então não existe conjunto para atribuir. Veja o MRR
  em Resumo, Tipo de cliente ou Semanal.</div>`;
-const avisoObj=b=>b==='amostra'
- ? `<div class="al o"><b>Só conjuntos com objetivo declarado de amostra.</b> Aqui a métrica que vale é
-    <b>custo por amostra</b>, não CAC — esses conjuntos nunca tentaram comprar cliente direto.</div>`
- : b==='compras'
- ? `<div class="al o"><b>Conjuntos de amostra estão fora.</b> Sobram os de venda e os de topo de funil.
-    Objetivo e vigência em <code>core.campanha_objetivo</code> — os W1 valem como amostra até 31/07 e
-    como venda a partir de 01/08, quando a oferta trocou.</div>` : '';
 
-// GASTO POR BALDE. Ate 08/08/2026 o filtro de balde cortava os PEDIDOS mas nao o GASTO: o painel
-// mostrava "ROAS 0,39" no balde MRR — dividia renovacao de assinante de mes anterior pelo gasto
-// de midia deste mes, que nao a causou. Mesmo defeito no balde Amostras, e em Compras ao contrario
-// (o CAC da conta carregava R$ 10.570 de conjunto que nunca tentou comprar cliente).
-// `vw_campanha_dia_real` fecha exatamente com o meta de `vw_mvp_custo_dia`: 61 dias, R$ 26.265,03
-// dos dois lados, zero dia divergente — entao o split por objetivo e exato, nao rateio.
-const SPEND_AM={}; (D.camp||[]).forEach(r=>{const d=String(r.dia).slice(0,10);
- if(objDe(d,r.conjunto)==='amostra') SPEND_AM[d]=(SPEND_AM[d]||0)+(+r.spend||0)});
-// MRR devolve 0 para que dv() caia em null e a tela mostre "—". Zero e a resposta certa: nao e
-// "gasto desconhecido", e gasto que por definicao nao existe.
-// Conjunto de amostra so existe no meta; google_ads e whatsapp nao tem grao de conjunto.
+// GASTO NAO SE DIVIDE POR BALDE. Tentei dividir em 08/08/2026, por objetivo declarado do conjunto,
+// e a premissa era falsa: o MESMO conjunto entrega amostra E compra com um orcamento so. Em julho
+// o W1_ENERGETICO fez 11 amostras, 5 compras de aquisicao e 2 assinaturas novas; o CJ_ADV_GERAL
+// fez 4 e 3. Nenhum rotulo por conjunto descreve isso, e ratear o gasto pelo que saiu e circular.
+//
+// Pior: dividir quebrava o acordo com a camada semantica. `vw_kpi_mes` calcula a conta como
+// fat_op / custo TOTAL — julho deu ROAS 0,78 e CAC R$ 345,90. O split fazia o Resumo mostrar
+// 1,73 e R$ 155,08 nos mesmos dias: dois CACs para o mesmo mes, no mesmo painel.
+//
+// Regra: o gasto pertence a CONTA. Compras usa o gasto inteiro e bate com a Semanal. Amostras e
+// MRR nao tem denominador proprio — devolvem 0 para que dv() caia em null e a tela mostre "—".
+// Custo por amostra nao e metrica de balde, e metrica de CONJUNTO: fica no grid de Canais e
+// campanhas, onde CJ_kit_exp aparece a R$ 24 e W1_ENERGETICO mostra as duas contas lado a lado.
 function custoBalde(s){
- const c=+s.custo||0;
- if(S.bal==='mrr') return 0;
- const am = s.fonte==='meta' ? (SPEND_AM[s.dia]||0) : 0;
- if(S.bal==='amostra') return Math.min(am,c);
- if(S.bal==='compras') return Math.max(0,c-am);
- return c;
+ if(S.bal==='mrr'||S.bal==='amostra') return 0;
+ return +s.custo||0;
 }
 const avisoBalde=()=>S.bal==='mrr'
  ? `<div class="al w"><b>Gasto, ROAS, CPA e CAC aparecem como "—" neste balde.</b> MRR é renovação de
     assinante de mês anterior: a mídia deste mês não a causou, então não há gasto que dividir.
     Zero não é dado faltando — é a resposta certa.</div>`
  : S.bal==='amostra'
- ? `<div class="al o"><b>O gasto aqui é só o dos conjuntos com objetivo declarado de amostra.</b>
-    A métrica que vale é <b>custo por amostra</b>, não CAC. Objetivo e vigência em
-    <code>core.campanha_objetivo</code>.</div>`
+ ? `<div class="al w"><b>Gasto, ROAS e CAC aparecem como "—" neste balde.</b> O mesmo conjunto entrega
+    amostra e compra com um orçamento só — separar o gasto exigiria rotular o conjunto, e nenhum
+    rótulo descreve as duas coisas. <b>Custo por amostra é métrica de conjunto</b>: está no grid de
+    <b>Mídia e campanhas</b>, na coluna <i>Cost/Sample</i>.</div>`
  : S.bal==='compras'
- ? `<div class="al o"><b>O gasto de conjunto de amostra está fora.</b> Sobra o gasto de venda e de
-    topo de funil — é sobre ele que o CAC da conta é calculado.</div>` : '';
+ ? `<div class="al o"><b>Esta é A CONTA.</b> Novos + recompra + novos assinantes sobre o gasto
+    <b>total</b> de mídia — mesma definição de <code>core.vw_kpi_mes</code> e da tela Semanal.
+    Amostra e MRR entram no faturamento total, mas nunca nesta conta.</div>` : '';
 // google_ads x google_organico: o utm_source nao separava (o sufixo `g` do feed do Merchant
 // Center serve listagem gratuita E Shopping pago). Quem separa e o gclid. `google` fica no mapa
 // por seguranca, para dado antigo nao cair em "Outros".
@@ -380,17 +362,12 @@ const MESPARC  = DIACORTE < ultimoDiaDoMes(MAX) ? MAX.slice(0,7) : null;
 function semK(d){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()-x.getDay());return x.toISOString().slice(0,10)}
 
 /* ========== métricas (camada semântica única) ========== */
-// ROAS so faz sentido onde a receita do balde e a receita que a midia tentou comprar. No balde
-// Amostras nao e: o conjunto de amostra troca R$ 86 por uma amostra de proposito, e o retorno vem
-// depois, na conversao. Mostrar "ROAS 0,45" ali diz que a campanha perdeu dinheiro numa conta que
-// ela nunca tentou fazer — a mesma armadilha do CAC de R$ 940 no CJ_kit_exp. A metrica do balde e
-// CUSTO POR AMOSTRA. Em MRR o gasto ja e zero, entao dv() sozinho devolve "—".
-const roasVale=()=>S.bal!=='amostra';
+// Em Amostras e MRR o gasto e zero por construcao (ver custoBalde), entao todo indicador de custo
+// cai em null pelo proprio dv() e a tela mostra "—". Nao ha caso especial a escrever aqui.
 const M={
  rec:{n:'Faturamento',f:R0,g:A=>A.rec,t:'Soma do faturamento dos pedidos pagos. Alterna entre líquido e bruto nas Configurações.'},
  spend:{n:'Gasto',f:R0,g:A=>A.spend,t:'Meta Ads e WhatsApp via API. Google Ads NÃO tem dado de custo.'},
- roas:{n:'ROAS',f:RT,g:A=>roasVale()?dv(A.rec,A.spend):null,t:'Faturamento atribuído ÷ gasto. Sem gasto atribuível mostra —. No balde Amostras não se aplica.'},
- camos:{n:'Custo por amostra',f:R$,g:A=>dv(A.spend,A.p_amostra),t:'Gasto dos conjuntos com objetivo de amostra ÷ amostras entregues. É esta a métrica do balde Amostras, não ROAS.'},
+ roas:{n:'ROAS',f:RT,g:A=>dv(A.rec,A.spend),t:'Faturamento ÷ gasto. Em Amostras e MRR não existe gasto próprio, então mostra —.'},
  ped:{n:'Compras',f:IN,g:A=>A.ped,t:'Contagem de pedidos. Compras e clientes são métricas diferentes.'},
  cli:{n:'Clientes únicos',f:IN,g:A=>A.cli,t:'Clientes distintos no período.'},
  tm:{n:'Ticket médio',f:R$,g:A=>dv(A.rec,A.ped),t:'Faturamento ÷ compras.'},
@@ -398,7 +375,7 @@ const M={
  nov:{n:'Novos clientes',f:IN,g:A=>A.p_novo_avulso+A.p_novo_assinatura,t:'Primeira compra paga. Amostra NÃO conta como cliente pagante.'},
  rnov:{n:'Receita de novos',f:R0,g:A=>A.r_novo_avulso+A.r_novo_assinatura,t:'Faturamento dos pedidos classificados como novos.'},
  cacn:{n:'CAC de novo cliente',f:R$,g:A=>dv(A.spend,A.p_novo_avulso+A.p_novo_assinatura),t:'Gasto ÷ novos clientes.'},
- ncroas:{n:'NC-ROAS',f:RT,g:A=>roasVale()?dv(A.r_novo_avulso+A.r_novo_assinatura,A.spend):null,t:'Receita de novos clientes ÷ gasto.'},
+ ncroas:{n:'NC-ROAS',f:RT,g:A=>dv(A.r_novo_avulso+A.r_novo_assinatura,A.spend),t:'Receita de novos clientes ÷ gasto.'},
  nassin:{n:'Novos assinantes',f:IN,g:A=>A.p_novo_assinatura+A.p_antigo_inicio_assinatura,t:'Novos assinatura + antigos início de assinatura. Renovação NUNCA conta como nova assinatura.'},
  cacа:{n:'CAC de novo assinante',f:R$,g:A=>dv(A.spend,A.p_novo_assinatura+A.p_antigo_inicio_assinatura),t:'Gasto ÷ novos assinantes.'},
  txassin:{n:'% novos que assinam',f:v=>PC(v),g:A=>dv(A.p_novo_assinatura,A.p_novo_avulso+A.p_novo_assinatura)*100,t:'Novos assinatura ÷ novos clientes.'},
@@ -410,7 +387,7 @@ const M={
  pcrec:{n:'% receita recorrente',f:v=>PC(v),g:A=>dv(A.r_recorrente,A.rec)*100,t:'Receita recorrente ÷ faturamento total.'},
  rassin:{n:'Receita de assinatura',f:R0,g:A=>A.r_novo_assinatura+A.r_antigo_inicio_assinatura+A.r_recorrente,t:'Novas assinaturas + assinatura recorrente.'},
  marg:{n:'Margem de contribuição',f:R0,g:A=>A.marg,t:'Faturamento − CMV − taxas (12,7%). ANTES do frete pago, que não está no banco.'},
- mpr:{n:'Margem por real gasto',f:RT,g:A=>roasVale()?dv(A.marg,A.spend):null,t:'Margem ÷ gasto. Acima de 1 o período se paga na primeira compra.'},
+ mpr:{n:'Margem por real gasto',f:RT,g:A=>dv(A.marg,A.spend),t:'Margem ÷ gasto. Acima de 1 o período se paga na primeira compra.'},
  rpc:{n:'Receita por cliente',f:R$,g:A=>dv(A.rec,A.cli),t:'Faturamento ÷ clientes únicos.'},
  amos:{n:'Amostras',f:IN,g:A=>A.p_amostra,t:'Pedido só de amostra (<R$50, 5 sachês). NÃO é cliente pagante nem faturamento de aquisição.'}
 };
@@ -589,7 +566,6 @@ function pgMidia(){
  const raiz=new Map(); const q=(S.gbusca||'').toLowerCase();
  for(const r of R){
    if(r.dia<de||r.dia>maxd) continue;
-   if(!passaObj(r.dia,r.conjunto)) continue;
    if(q && ![r.campanha,r.conjunto,r.anuncio].some(x=>String(x||'').toLowerCase().includes(q))) continue;
    const n1=raiz.get(r.canal)||{n:r.canal,lv:1,a:Z0(),f:new Map()}; raiz.set(r.canal,n1); som(n1.a,r);
    const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); som(n2.a,r);
@@ -602,7 +578,6 @@ function pgMidia(){
  for(const r of (D.camp||[])){
    const d=String(r.dia||'').slice(0,10);
    if(d<de||d>maxd) continue;
-   if(!passaObj(d,r.conjunto)) continue;
    if(q && ![r.campanha,r.conjunto].some(x=>String(x||'').toLowerCase().includes(q))) continue;
    const add=o=>{o.amostras+=(+r.ped_amostra||0);o.assin_novo+=(+r.assin_novo||0);o.nc_estrito+=(+r.ped_aquisicao||0)};
    const n1=raiz.get('meta')||{n:'meta',lv:1,a:Z0(),f:new Map()}; raiz.set('meta',n1); add(n1.a);
@@ -641,13 +616,20 @@ function pgMidia(){
  const col=COLS.find(c=>c.k===S.gord)||COLS[0];
  const ord=l=>l.sort((x,y)=>{const a=col.v(x.a),b=col.v(y.a);
    if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
- const cor=(c,v)=>{if(v==null||!c.c)return'';
+ // COR SO ONDE A CONTA E VALIDA. Nenhuma linha some do grid — um conjunto entrega amostra E compra,
+ // entao esconder e mentir. Mas pintar tambem mentia: o CJ_kit_exp fez 54 amostras e 0 compras de
+ // aquisicao em julho e aparecia com CAC vermelho, reprovado por uma conta que ele nao tentou fazer.
+ // Regra: CAC e ROAS so ganham cor com pelo menos 3 pedidos de aquisicao no periodo. Abaixo disso o
+ // numero continua na tela, em cinza — e ruido amostral, nao veredito.
+ const MIN_AQ=3;
+ const cor=(c,v,a)=>{if(v==null||!c.c)return'';
+   if((a.nc_estrito||a.nc_pedidos||0)<MIN_AQ) return 'var(--t3)';
    if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
    return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
  const out=[];
  const linha=(no,cam)=>{
    const tem=no.f&&no.f.size>0, ab=!!S.gop[cam];
-   const tds=COLS.map(c=>{const v=c.v(no.a),k=cor(c,v);
+   const tds=COLS.map(c=>{const v=c.v(no.a),k=cor(c,v,no.a);
      return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a)}</td>`}).join('');
    out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-(S.gcanal?2:1))*16}px">`
     +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`:'<span style="display:inline-block;width:13px"></span>')
@@ -669,7 +651,7 @@ function pgMidia(){
  const selCanal=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
    +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
  if(S.bal==='mrr') return avisoMRR;
- return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}${avisoObj(S.bal)}
+ return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}${avisoBalde()}
  <div class="sc"><div class="sch"><div><h2>Grid de mídia</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>. Colunas em cinza são reportadas pelo
   Meta (pixel da plataforma); as demais são pedido real medido no banco.</p></div>
@@ -688,8 +670,9 @@ function pgResumo(){
  const j=jan(),jc=janC(j),A=agg(j),B=jc?agg(jc):null;
  const g=S.gran, s=serie(j,g), sm=serie([MIN,MAX],'mes');
  const sp=k=>s.map(d=>{const A2={...Z(),...d};return M[k]?M[k].g(A2)||0:0});
- // No balde Amostras o slot do ROAS vira Custo por amostra — a métrica que o balde realmente tem.
- const r1=(S.bal==='amostra'?['rec','spend','camos','ped','cli','tm']:['rec','spend','roas','ped','cli','tm'])
+ // Em Amostras e MRR nao ha gasto proprio: os cards de Gasto e ROAS saem da manchete em vez de
+ // mostrar R$ 0 e "—", que o olho le como dado faltando.
+ const r1=(S.bal==='amostra'||S.bal==='mrr'?['rec','ped','cli','tm']:['rec','spend','roas','ped','cli','tm'])
   .map(k=>CD(k,A,B,['rec','spend','ped'].includes(k)?sp(k):null)).join('');
  const r2=['nov','cacn','rnov','ncroas','nassin','cacа','txassin'].map(k=>CD(k,A,B)).join('');
  const r3=['antc','antia','renov','rrec','pcrec','txant'].map(k=>CD(k,A,B)).join('');
@@ -700,10 +683,7 @@ function pgResumo(){
   {k:'c',t:'Canal',l:1,fx:1,f:r=>r.canal,raw:r=>r.canal,tf:()=>'Top 5'},
   {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
   {k:'g',t:'Gasto',f:r=>r.spend>0?R0(r.spend):'<span class="na">sem dado</span>',raw:r=>r.spend,tf:t=>R0(t.spend)},
-  {k:'ro',t:roasVale()?'ROAS':'Custo/amostra',
-   f:r=>{const v=roasVale()?dv(r.rec,r.spend):dv(r.spend,r.p_amostra);
-     return v==null?'<span class="na">—</span>':(roasVale()?RT(v):R$(v))},
-   raw:r=>(roasVale()?dv(r.rec,r.spend):dv(r.spend,r.p_amostra))??-1},
+  {k:'ro',t:'ROAS',f:r=>{const v=dv(r.rec,r.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>dv(r.rec,r.spend)??-1},
   {k:'n',t:'Novos',f:r=>IN(r.p_novo_avulso+r.p_novo_assinatura),raw:r=>r.p_novo_avulso+r.p_novo_assinatura},
   {k:'na',t:'Novos assin.',ce:1,f:r=>IN(r.p_novo_assinatura+r.p_antigo_inicio_assinatura),raw:r=>r.p_novo_assinatura+r.p_antigo_inicio_assinatura}
  ],top,top.reduce((a,r)=>{a.rec=(a.rec||0)+r.rec;a.spend=(a.spend||0)+r.spend;return a},{}));
@@ -772,14 +752,10 @@ function pgAtribuicao(){
   {k:'c',t:'Canal',l:1,fx:1,f:r=>`${r.canal}<br><span class="pl g">${GRUPO[r.canal]||'Outros'}</span>`,raw:r=>r.canal,tf:()=>'<b>Total</b>'},
   {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
   {k:'g',t:'Gasto',f:r=>r.spend>0?R0(r.spend):'<span class="na">sem dado</span>',raw:r=>r.spend,tf:t=>R0(t.spend)},
-  {k:'ro',t:roasVale()?'ROAS':'Custo/amostra',
-   tip:roasVale()?'Faturamento ÷ gasto. Sem gasto atribuível mostra —.'
-     :'Gasto dos conjuntos de amostra ÷ amostras entregues. ROAS não se aplica a este balde.',
-   f:r=>{const v=roasVale()?dv(r.rec,r.spend):dv(r.spend,r.p_amostra);
-    if(v==null)return '<span class="na">—</span>';
-    return roasVale()?`<b style="color:${v>=2?'var(--vd)':v>=1?'var(--pt)':'var(--vm)'}">${RT(v)}</b>`:R$(v)},
-   raw:r=>(roasVale()?dv(r.rec,r.spend):dv(r.spend,r.p_amostra))??-1,
-   tf:t=>roasVale()?RT(dv(t.rec,t.spend)):R$(dv(t.spend,t.p_amostra))},
+  {k:'ro',t:'ROAS',tip:'Faturamento ÷ gasto. Em Amostras e MRR não existe gasto próprio, então mostra —.',
+   f:r=>{const v=dv(r.rec,r.spend);
+    return v==null?'<span class="na">—</span>':`<b style="color:${v>=2?'var(--vd)':v>=1?'var(--pt)':'var(--vm)'}">${RT(v)}</b>`},
+   raw:r=>dv(r.rec,r.spend)??-1,tf:t=>RT(dv(t.rec,t.spend))},
   {k:'m',t:'Margem',f:r=>R0(r.marg),raw:r=>r.marg,tf:t=>R0(t.marg)},
   {k:'p',t:'Compras',f:r=>IN(r.ped),raw:r=>r.ped,tf:t=>IN(t.ped)},
   {k:'cl',t:'Clientes',f:r=>IN(r.cli),raw:r=>r.cli,tf:t=>IN(t.cli)},
@@ -804,8 +780,8 @@ function pgAtribuicao(){
  const avEixo=S.eixo==='aquisicao'
   ?`<div class="al o"><b>Eixo: canal de aquisição.</b> A receita recorrente está incluída e atribuída ao canal que <b>originalmente adquiriu</b> o cliente. Leia como <b>valor acumulado</b>, não como performance de mídia do período.</div>`
   :`<div class="al o"><b>Eixo: canal do pedido.</b> A receita recorrente está <b>excluída</b> — atribuir renovação a canal não faz sentido, o canal não causou a renovação. Para ver renovação por origem, troque o eixo para <b>canal de aquisição</b>.</div>`;
- return `${avisoBalde()}<div class="sc"><div class="gr g6">${(S.bal==='amostra'
-   ?['rec','spend','camos','ped','tm','nov','cacn','nassin','cacа']
+ return `${avisoBalde()}<div class="sc"><div class="gr g6">${(S.bal==='amostra'||S.bal==='mrr'
+   ?['rec','ped','tm','nov','nassin']
    :['rec','spend','roas','cpa','ped','tm','nov','cacn','nassin','cacа']).map(k=>CD(k,A,B)).join('')}</div></div>
  ${avPlat}${avEixo}
  <div class="sc"><div class="sch"><div><h2>Atribuição por canal</h2>
