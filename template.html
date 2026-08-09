@@ -229,6 +229,9 @@ const GRUPO={meta:'Mídia paga',google:'Mídia paga',google_ads:'Mídia paga',ti
  parceria:'Influência',ia:'Orgânico','woo-legado':'Outros','nao-atribuido':'Outros',crm:'CRM',youtube:'Orgânico',
  carta:'Outros',indicacao:'Influência',organico:'Orgânico'};
 const dias=D.dias.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
+// Fonte da SINTESE: os mesmos pedidos, ja rateados pela jornada (ver query `dlin`). E uma tabela
+// separada porque o rateio muda o GRAO — um pedido de 3 canais vira 3 linhas com peso 1/3.
+const dlin=(D.dlin||[]).map(r=>({...r,dia:String(r.dia).slice(0,10)}));
 const spend=D.spend.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
 // MIN sai do dado, nao de constante: o banco comeca em 16/01/2025 e o painel estava cravado em
 // 2026-01-01, entao o total de clientes nunca fechava (mostrava 624 onde o historico tem 1.206).
@@ -293,14 +296,16 @@ const val=r=>S.rec==='liq'?r.liq:r.bruto;
 //                  se somam de volta em 1 e nao aparece fracao.
 // Os tres preservam o total exato. Medido em jun+jul: Meta vai de R$ 29.204 (first) a R$ 31.765
 // (last); o canal `x` so existe como first click.
+// SINTESE le de `dlin`, onde o rateio da jornada JA foi feito no banco: cada linha e um toque com
+// o peso dele. Por isso aqui ela devolve um lado so com peso 1 — multiplicar de novo contaria duas
+// vezes. First e last leem de `dias` e escolhem o lado.
 const LADOS=r=>{
  const m=S.mod||'sintese';
- const F=[r.canal_aq,r.campanha,r.conjunto,r.anuncio];
- const L=[r.canal,   r.campanha_l,r.conjunto_l,r.anuncio_l];
- if(m==='first')return [[...F,1]];
- if(m==='last') return [[...L,1]];
- return [[...F,.5],[...L,.5]];        // sintese e plataforma
+ if(m==='first')return [[r.canal_aq,r.campanha,r.conjunto,r.anuncio,1]];
+ if(m==='last') return [[r.canal,r.campanha_l,r.conjunto_l,r.anuncio_l,1]];
+ return [[r.canal,r.campanha,r.conjunto,r.anuncio,1]];
 };
+const FONTE=()=>(S.mod==='first'||S.mod==='last')?dias:dlin;
 const cCan=r=>S.mod==='last'?r.canal:r.canal_aq;
 
 /* ========== agregação ========== */
@@ -315,7 +320,7 @@ function uneKS(destino,fontes){for(const f of fontes){if(f&&f.ks)for(const k of 
 function agg(j,{canalView=false}={}){
  const A=Object.assign(Z(),{plat_c:0,plat_r:0,can:{},cat:{},cmp:{},arv:{}});
  if(!j)return A;
- for(const r of dias){
+ for(const r of FONTE()){
   if(!inP(r.dia,j))continue;
   if(S.cat&&r.categoria!==S.cat)continue;
   const _bc=balCats(S.bal); if(_bc&&!_bc.includes(r.categoria))continue;
@@ -365,7 +370,7 @@ function agg(j,{canalView=false}={}){
 function serie(j,g,diaMax){
  const m={};
  const put=k=>m[k]||(m[k]=Object.assign({k},Z()));
- for(const r of dias){
+ for(const r of FONTE()){
   if(!inP(r.dia,j))continue;
   if(diaMax&&+r.dia.slice(8,10)>diaMax)continue;
   if(S.cat&&r.categoria!==S.cat)continue;
@@ -1233,11 +1238,14 @@ function pgCanais(){
   ? `<div class="al w"><b>Modelo Plataforma.</b> Cada plataforma se credita pelo próprio critério e
      os valores se sobrepõem — não somam faturamento real. Aqui a tabela segue a Síntese; a
      comparação com o que o Meta se atribui está em Resumo.</div>`
-  : `<div class="al o"><b>Síntese.</b> Cada pedido entra com <b>metade</b> no canal que trouxe a
-     pessoa e <b>metade</b> no que fechou a venda, cada metade com a campanha do seu próprio clique.
-     Não é média de números prontos — é o pedido dividido. Quando os dois cliques são do mesmo canal
-     (92% dos pedidos) as metades se juntam de volta e não aparece fração. O total do período é
-     idêntico nos três modelos; o que muda é <b>de quem é o crédito</b>.</div>`;
+  : `<div class="al o"><b>Síntese — linear na jornada.</b> Todos os cliques do pedido valem o
+     mesmo: 10 sessões antes da compra dão <b>10% para cada uma</b>; 3 sessões dão 33%.
+     Cada toque leva a campanha do próprio clique. Pedido sem jornada rastreável — cliente que
+     voltou e comprou sem passar pelo site, ou WooCommerce legado — cai no <b>canal de aquisição</b>
+     com peso inteiro, que é um terço do faturamento e não pode virar "não sei".
+     O total do período é idêntico nos três modelos; o que muda é <b>de quem é o crédito</b>.
+     <br><span class="t3">Atenção: jornada com muitas visitas diretas de retorno empurra crédito
+     para <b>direct</b>, que não comprou ninguém. É a limitação conhecida do modelo linear.</span></div>`;
  return `${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.

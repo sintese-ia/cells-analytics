@@ -100,6 +100,33 @@ select created_at::date dia, canal, canal_aq, sistema, categoria,
  sum((coalesce(basis,'session') in ('session','landing'))::int) med,
  sum((basis='inherited')::int) inf
 from b group by 1,2,3,4,5,6,7,8,9,10,11`,
+  // SINTESE = ATRIBUICAO LINEAR. Mesmo formato de `dias`, mas cada pedido ja entra RATEADO pela
+  // jornada: 10 sessoes -> 10% para cada toque, 3 sessoes -> 33%. Quem nao tem jornada
+  // reconstruivel (33% do faturamento: `inherited`, woo legado, cliente que voltou sem passar no
+  // site) cai no canal de AQUISICAO com peso 1 — sem isso um terco da receita viraria "nao sei".
+  // Regra e medicoes em cells-infra/fixes/2026-08-09-vw-atribuicao-linear.sql.
+  dlin: `with w as (
+   select p.order_id, p.created_at, p.sistema, p.categoria,
+          p.bruto, p.desconto, p.reembolso, p.liquido, p.cmv, p.margem, p.cmv_ok, p.basis,
+          coalesce(al.canal, p.canal_aq) canal,
+          al.campanha, al.conjunto, al.anuncio,
+          coalesce(al.peso,1) peso,
+          dense_rank() over (order by coalesce(p.cid,p.email)) kid
+     from core.vw_app_pedido p
+     left join core.vw_atribuicao_linear al on al.order_id = p.order_id
+    where p.created_at >= '2025-01-01')
+ select created_at::date dia, canal, canal canal_aq, sistema, categoria,
+   campanha, conjunto, anuncio,
+   campanha campanha_l, conjunto conjunto_l, anuncio anuncio_l,
+   round(sum(peso)::numeric,4) pedidos,
+   count(distinct kid) clientes, array_agg(distinct kid) ks,
+   round(sum(bruto*peso)::numeric,2) bruto, round(sum(desconto*peso)::numeric,2) desc_,
+   round(sum(reembolso*peso)::numeric,2) reemb, round(sum(liquido*peso)::numeric,2) liq,
+   round(sum(cmv*peso)::numeric,2) cmv, round(sum(margem*peso)::numeric,2) marg,
+   round(sum((cmv_ok)::int*peso)::numeric,2) cmv_ok,
+   round(sum((coalesce(basis,'session') in ('session','landing'))::int*peso)::numeric,2) med,
+   round(sum((basis='inherited')::int*peso)::numeric,2) inf
+ from w group by 1,2,3,4,5,6,7,8`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita
