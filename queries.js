@@ -49,6 +49,19 @@ module.exports = {
              when fs.coerente then nullif(fs.utm_content,'')  end adset,
         case when s.first_session_id is null then null
              when fs.coerente then nullif(fs.utm_term,'')     end anuncio,
+        -- MESMA construcao para o LAST touch, para o modelo Last click ter a hierarquia dele.
+        case when s.last_session_id is null then
+                  (case when exists (select 1 from cn where cn.campanha = s.last_touch_campaign
+                          and cn.canal = regexp_replace(p.canal,'^google_.*$','google'))
+                        then nullif(s.last_touch_campaign,'') end)
+             when ls.coerente then nullif(ls.utm_campaign,'') end campanha_l,
+        case when s.last_session_id is null then
+                  (case when exists (select 1 from cn where cn.conjunto = s.last_touch_content
+                          and cn.canal = regexp_replace(p.canal,'^google_.*$','google'))
+                        then nullif(s.last_touch_content,'') end)
+             when ls.coerente then nullif(ls.utm_content,'')  end conjunto_l,
+        case when s.last_session_id is null then null
+             when ls.coerente then nullif(ls.utm_term,'')     end anuncio_l,
         p.bruto, p.desconto, p.reembolso, p.liquido, p.cmv, p.margem, p.cmv_ok, p.basis,
         dense_rank() over (order by coalesce(p.cid,p.email)) kid
    from core.vw_app_pedido p
@@ -66,9 +79,19 @@ module.exports = {
       where w.session_id = s.first_session_id
       order by w.timestamp
       limit 1) fs on true
+   left join lateral (
+     select w.utm_campaign, w.utm_content, w.utm_term,
+            coalesce(regexp_replace(coalesce(fc.canal, w.source_norm, ''), '^google_.*$', 'google'), '')
+              = regexp_replace(p.canal, '^google_.*$', 'google') as coerente
+       from web.sessions w
+       left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
+      where w.session_id = s.last_session_id
+      order by w.timestamp desc
+      limit 1) ls on true
   where p.created_at>='2025-01-01')
 select created_at::date dia, canal, canal_aq, sistema, categoria,
  nullif(campanha,'') campanha, nullif(adset,'') conjunto, nullif(anuncio,'') anuncio,
+ campanha_l, conjunto_l, anuncio_l,
  count(*) pedidos, count(distinct kid) clientes, array_agg(distinct kid) ks,
  round(sum(bruto)::numeric,2) bruto, round(sum(desconto)::numeric,2) desc_,
  round(sum(reembolso)::numeric,2) reemb, round(sum(liquido)::numeric,2) liq,
@@ -76,7 +99,7 @@ select created_at::date dia, canal, canal_aq, sistema, categoria,
  sum((cmv_ok)::int) cmv_ok,
  sum((coalesce(basis,'session') in ('session','landing'))::int) med,
  sum((basis='inherited')::int) inf
-from b group by 1,2,3,4,5,6,7,8`,
+from b group by 1,2,3,4,5,6,7,8,9,10,11`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita

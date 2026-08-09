@@ -182,6 +182,8 @@ const BALDE={
  mrr:{n:'MRR',          cats:['recorrente'],
    d:'Renovação de assinante de mês anterior. Não tem campanha — a mídia deste mês não a causou.'}
 };
+// Devolve null para balde vazio OU desconhecido. Quem chama TEM que checar o null antes do
+// .includes — `S.bal` vem da URL e um valor invalido derrubava a pagina inteira (5 telas).
 const balCats=b=>BALDE[b]?BALDE[b].cats:null;
 
 const avisoMRR=`<div class="al w"><b>MRR não tem campanha.</b> É renovação de assinante de mês
@@ -280,7 +282,26 @@ function janC(j){
 }
 const inP=(x,j)=>j&&x>=j[0]&&x<=j[1];
 const val=r=>S.rec==='liq'?r.liq:r.bruto;
-const cCan=r=>S.eixo==='aquisicao'?r.canal_aq:r.canal;
+// MODELO DE ATRIBUICAO. Ate 08/08/2026 o seletor "Atribuicao" era decorativo: `S.mod` so
+// alimentava um texto de aviso, e quem trocava de verdade era o seletor "Eixo", escondido. Agora
+// o seletor manda, e cada modelo traz a hierarquia dele:
+//   last click  -> canal (last_touch)   + campanha_l/conjunto_l/anuncio_l
+//   first click -> canal_aq (first_touch) + campanha/conjunto/anuncio
+//   sintese     -> METADE para cada lado. Nao e media de numeros prontos: cada pedido entra com
+//                  peso 0,5 no canal que o trouxe e 0,5 no que fechou, cada metade com a propria
+//                  hierarquia. Quando os dois lados sao o mesmo canal (92% dos pedidos) as metades
+//                  se somam de volta em 1 e nao aparece fracao.
+// Os tres preservam o total exato. Medido em jun+jul: Meta vai de R$ 29.204 (first) a R$ 31.765
+// (last); o canal `x` so existe como first click.
+const LADOS=r=>{
+ const m=S.mod||'sintese';
+ const F=[r.canal_aq,r.campanha,r.conjunto,r.anuncio];
+ const L=[r.canal,   r.campanha_l,r.conjunto_l,r.anuncio_l];
+ if(m==='first')return [[...F,1]];
+ if(m==='last') return [[...L,1]];
+ return [[...F,.5],[...L,.5]];        // sintese e plataforma
+};
+const cCan=r=>S.mod==='last'?r.canal:r.canal_aq;
 
 /* ========== agregação ========== */
 // `ks` e o conjunto de identidades do balde. `cli` deixa de ser soma de count(distinct) por grupo
@@ -296,33 +317,31 @@ function agg(j,{canalView=false}={}){
  if(!j)return A;
  for(const r of dias){
   if(!inP(r.dia,j))continue;
-  const c=cCan(r);
-  if(S.can&&c!==S.can)continue;
-  if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
   if(S.cat&&r.categoria!==S.cat)continue;
-  if(S.bal&&!balCats(S.bal).includes(r.categoria))continue;
-  // REGRA: na visão por canal (eixo=pedido) a recorrente NAO entra —
-  // atribuir renovação a canal não faz sentido, o canal não causou a renovação.
-  if(canalView&&S.eixo==='pedido'&&r.categoria==='recorrente')continue;
+  const _bc=balCats(S.bal); if(_bc&&!_bc.includes(r.categoria))continue;
+  // REGRA: na visão por canal a recorrente NAO entra — atribuir renovação a canal não faz
+  // sentido, o canal não causou a renovação.
+  if(canalView&&r.categoria==='recorrente')continue;
   const v=val(r);
-  const o=A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
-  const k=A.cat[r.categoria]||(A.cat[r.categoria]=Object.assign(Z(),{categoria:r.categoria}));
-  // (canal, campanha): e o grao onde o creator aparece. Com utm_campaign=nomedocreator, cada
-  // creator vira uma linha aqui em vez de sumir dentro de um canal chamado "creator".
-  const nomeC=r.campanha||'(sem campanha)';
-  const cp=A.cmp[c+'|'+nomeC]||(A.cmp[c+'|'+nomeC]=Object.assign(Z(),{canal:c,campanha:nomeC}));
-  // ARVORE canal > campanha > conjunto > anuncio. TODA a receita sai daqui, em todo nivel, para
-  // que filho sempre some no pai. Gasto e colunas de plataforma entram depois, do grid do Meta.
-  const nomeJ=r.conjunto||'(sem conjunto)', nomeA=r.anuncio||'(sem anúncio)';
-  const n1=A.arv[c]||(A.arv[c]={n:c,lv:1,a:Z(),f:{}});
-  const n2=n1.f[nomeC]||(n1.f[nomeC]={n:nomeC,lv:2,a:Z(),f:{}});
-  const n3=n2.f[nomeJ]||(n2.f[nomeJ]={n:nomeJ,lv:3,a:Z(),f:{}});
-  const n4=n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
-  for(const t of [A,o,k,cp,n1.a,n2.a,n3.a,n4.a]){
-   t.rec+=v;t.bruto+=r.bruto;t.desc+=r.desc_;t.reemb+=r.reemb;t.cmv+=r.cmv;t.marg+=r.marg;
-   t.ped+=r.pedidos;t.cmv_ok+=r.cmv_ok;t.med+=r.med;t.inf+=r.inf;
-   if(r.ks)for(const x of r.ks)t.ks.add(x);
-   t['r_'+r.categoria]+=v;t['p_'+r.categoria]+=r.pedidos;t['m_'+r.categoria]+=r.marg}
+  for(const [c0,cp0,cj0,an0,w] of LADOS(r)){
+   const c=c0||'nao-atribuido';
+   if(S.can&&c!==S.can)continue;
+   if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
+   const o=A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
+   const k=A.cat[r.categoria]||(A.cat[r.categoria]=Object.assign(Z(),{categoria:r.categoria}));
+   const nomeC=cp0||'(sem campanha)';
+   const cp=A.cmp[c+'|'+nomeC]||(A.cmp[c+'|'+nomeC]=Object.assign(Z(),{canal:c,campanha:nomeC}));
+   const nomeJ=cj0||'(sem conjunto)', nomeA=an0||'(sem anúncio)';
+   const n1=A.arv[c]||(A.arv[c]={n:c,lv:1,a:Z(),f:{}});
+   const n2=n1.f[nomeC]||(n1.f[nomeC]={n:nomeC,lv:2,a:Z(),f:{}});
+   const n3=n2.f[nomeJ]||(n2.f[nomeJ]={n:nomeJ,lv:3,a:Z(),f:{}});
+   const n4=n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
+   for(const t of [A,o,k,cp,n1.a,n2.a,n3.a,n4.a]){
+    t.rec+=v*w;t.bruto+=r.bruto*w;t.desc+=r.desc_*w;t.reemb+=r.reemb*w;t.cmv+=r.cmv*w;t.marg+=r.marg*w;
+    t.ped+=r.pedidos*w;t.cmv_ok+=r.cmv_ok*w;t.med+=r.med*w;t.inf+=r.inf*w;
+    if(r.ks)for(const x of r.ks)t.ks.add(x);
+    t['r_'+r.categoria]+=v*w;t['p_'+r.categoria]+=r.pedidos*w;t['m_'+r.categoria]+=r.marg*w}
+  }
  }
  // cli = tamanho da uniao, nunca soma de contagens
  A.cli=A.ks.size;
@@ -349,12 +368,17 @@ function serie(j,g,diaMax){
  for(const r of dias){
   if(!inP(r.dia,j))continue;
   if(diaMax&&+r.dia.slice(8,10)>diaMax)continue;
-  const c=cCan(r);
-  if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue; if(S.cat&&r.categoria!==S.cat)continue;
-  if(S.bal&&!balCats(S.bal).includes(r.categoria))continue;
-  const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, o=put(k), v=val(r);
-  o.rec+=v;o.marg+=r.marg;o.ped+=r.pedidos;o['r_'+r.categoria]+=v;o['p_'+r.categoria]+=r.pedidos;o['m_'+r.categoria]+=r.marg;
-  if(r.ks)for(const x of r.ks)o.ks.add(x)}
+  if(S.cat&&r.categoria!==S.cat)continue;
+  const _bc=balCats(S.bal); if(_bc&&!_bc.includes(r.categoria))continue;
+  // mesmo modelo do agg(): em sintese o pedido entra meio a meio nos dois canais
+  const k=g==='mes'?r.dia.slice(0,7):g==='sem'?semK(r.dia):r.dia, v=val(r);
+  for(const [c0,,,,w] of LADOS(r)){
+   const c=c0||'nao-atribuido';
+   if(S.can&&c!==S.can)continue; if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
+   const o=put(k);
+   o.rec+=v*w;o.marg+=r.marg*w;o.ped+=r.pedidos*w;
+   o['r_'+r.categoria]+=v*w;o['p_'+r.categoria]+=r.pedidos*w;o['m_'+r.categoria]+=r.marg*w;
+   if(r.ks)for(const x of r.ks)o.ks.add(x)}}
  for(const o of Object.values(m))o.cli=o.ks.size;
  for(const s of spend){
   if(!inP(s.dia,j))continue; if(S.can&&s.fonte!==S.can)continue;
@@ -1199,7 +1223,22 @@ function pgCanais(){
  const canais=Object.keys(A.arv||{}).sort();
  const sel=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
    +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
- return `${avisoBalde()}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
+ const avMod=S.mod==='first'
+  ? `<div class="al o"><b>First click.</b> O pedido inteiro vai para o canal que trouxe a pessoa
+     pela primeira vez, com a campanha daquele clique. É a leitura de <b>aquisição</b>.</div>`
+  : S.mod==='last'
+  ? `<div class="al o"><b>Last click.</b> O pedido inteiro vai para o canal do <b>último</b> clique
+     antes da compra, com a campanha daquele clique. É a leitura de <b>fechamento</b>.</div>`
+  : S.mod==='plataforma'
+  ? `<div class="al w"><b>Modelo Plataforma.</b> Cada plataforma se credita pelo próprio critério e
+     os valores se sobrepõem — não somam faturamento real. Aqui a tabela segue a Síntese; a
+     comparação com o que o Meta se atribui está em Resumo.</div>`
+  : `<div class="al o"><b>Síntese.</b> Cada pedido entra com <b>metade</b> no canal que trouxe a
+     pessoa e <b>metade</b> no que fechou a venda, cada metade com a campanha do seu próprio clique.
+     Não é média de números prontos — é o pedido dividido. Quando os dois cliques são do mesmo canal
+     (92% dos pedidos) as metades se juntam de volta e não aparece fração. O total do período é
+     idêntico nos três modelos; o que muda é <b>de quem é o crédito</b>.</div>`;
+ return `${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
   Faturamento, compras, clientes e margem vêm sempre do pedido atribuído — por isso filho sempre
@@ -1306,9 +1345,6 @@ function filtros(){
   <div class="fg"><label for="fc">Comparar</label><select id="fc">${CMP.map(([v,n])=>`<option value="${v}" ${S.cmp===v?'selected':''}>${n}</option>`).join('')}</select></div>
   <div class="fg"><label for="fm">Atribuição</label><select id="fm">${MOD.map(([v,n])=>`<option value="${v}" ${S.mod===v?'selected':''}>${n}${v==='sintese'?' ★ recomendado':''}</option>`).join('')}</select></div>
   <div class="fg"><label for="fch">Canal</label><select id="fch"><option value="">Todos</option>${CANAIS.map(c=>`<option value="${c}" ${S.can===c?'selected':''}>${c}</option>`).join('')}</select></div>
-  <div class="fg"><label for="fe">Eixo</label><select id="fe">
-   <option value="pedido" ${S.eixo==='pedido'?'selected':''}>Canal do pedido</option>
-   <option value="aquisicao" ${S.eixo==='aquisicao'?'selected':''}>Canal de aquisição</option></select></div>
   <button class="bt ${S.mais?'on':''}" id="bm">Mais filtros ${S.mais?'▲':'▼'}</button>
   <button class="bt" id="bc">Limpar filtros</button>
   <button class="bt" id="be">Exportar CSV</button>
