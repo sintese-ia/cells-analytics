@@ -1247,8 +1247,11 @@ function pgCanais(){
      consequência, não causa — quem digitou o endereço já conhecia a marca. Se a jornada é só
      direct, ele fica com tudo, porque não há outro candidato.
      O total do período é idêntico nos três modelos; o que muda é <b>de quem é o crédito</b>.
-     <br><span class="t3">Na Cells são 1,17 canais distintos por pedido, então na maioria dos casos
-     este modelo entrega o mesmo que o first click. A diferença aparece na cauda.</span></div>`;
+     <br><span class="t3">A jornada é montada costurando <b>todos os identificadores do mesmo
+     cliente</b> — sem isso o <code>user_id</code> se fragmenta e a jornada parece bem menor do que
+     é (2,58 → 3,88 sessões por pedido). Ainda assim são <b>1,20 canais distintos por pedido</b>:
+     na maioria dos casos este modelo entrega o mesmo que o first click, e a diferença aparece nos
+     16% de pedidos multicanal.</span></div>`;
  return `${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
