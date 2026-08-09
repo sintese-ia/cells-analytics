@@ -436,6 +436,11 @@ const M={
 function dlt(a,b){ if(b==null||b===0||!isFinite(b)||a==null)return'';
  const d=(a-b)/Math.abs(b)*100, c=Math.abs(d)<.5?'f':(d>0?'u':'d'), s=Math.abs(d)<.5?'→':(d>0?'▲':'▼');
  return `<span class="${c}">${s} ${nf(Math.abs(d),1)}%</span>`}
+// CAC subindo e RUIM, entao a cor tem que inverter. Sem isto um CAC 20% mais caro aparecia em
+// verde, que e a leitura oposta da realidade.
+function dltInv(a,b){ if(b==null||b===0||!isFinite(b)||a==null)return'';
+ const d=(a-b)/Math.abs(b)*100, c=Math.abs(d)<.5?'f':(d>0?'d':'u'), s=Math.abs(d)<.5?'→':(d>0?'▲':'▼');
+ return `<span class="${c}">${s} ${nf(Math.abs(d),1)}%</span>`}
 function CD(id,A,B,sp){
  const m=M[id], v=m.g(A), b=B?m.g(B):null;
  return `<div class="cd"><div class="k"><span class="h" title="${m.t}">${m.n}</span></div>
@@ -504,6 +509,7 @@ const PGS={
  tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
  mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
  semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
+ matriz:{t:'Matriz',ic:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18'},
  resultado:{t:'Resultado',ic:'M3 3v18h18M7 15l4-5 3 3 5-7'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
@@ -1270,6 +1276,88 @@ function pgCanais(){
   aparecem como <b>—</b>, nunca como zero.</div></div>`;
 }
 
+/* ==================== MATRIZ — balde x métrica (09/08/2026) ==================== */
+// Pedido do Gabriel: "as colunas vao ser TOTAL | COMPRAS | MRR | AMOSTRAS... dps outro embaixo que
+// separa COMPRAS TOTAIS | COMPRAS NOVOS | ASSINATURAS NOVOS | COMPRAS RECORRENTES | ASSINATURAS
+// RECORRENTES. quero conseguir fazer isso por periodo."
+//
+// A tela NAO respeita o filtro de balde da barra: ela mostra os baldes lado a lado, que e o ponto.
+// Respeita periodo, canal e modelo de atribuicao.
+//
+// `cli` de uma coluna que soma categorias e a UNIAO dos conjuntos, nunca a soma das contagens —
+// quem comprou avulso em julho e assinou em agosto e UMA pessoa. Por isso uneKS em toda coluna
+// composta, e por isso TOTAL nao e a soma horizontal de clientes.
+function pgMatriz(){
+ const j=jan(), jc=janC(j);
+ const A=agg(j), B=jc?agg(jc):null;
+
+ // uma coluna = um conjunto de categorias, agregado com uniao de identidades
+ const col=(X,cats)=>{
+  const o=Z(); if(!X)return o;
+  cats.forEach(c=>{const x=X.cat[c]; if(x)for(const k in o)if(typeof o[k]==='number')o[k]+=(x[k]||0)});
+  return uneKS(o,cats.map(c=>X.cat[c]).filter(Boolean));
+ };
+ const COMPRAS=['novo_avulso','antigo_avulso','novo_assinatura','antigo_inicio_assinatura'];
+ const B1=[
+  ['TOTAL',    ORD],
+  ['Compras',  COMPRAS],
+  ['MRR',      ['recorrente']],
+  ['Amostras', ['amostra']]
+ ];
+ const B2=[
+  ['Compras totais',        COMPRAS],
+  ['Compras novos',         ['novo_avulso']],
+  ['Assinaturas novos',     ['novo_assinatura']],
+  ['Compras recorrentes',   ['antigo_avulso']],
+  ['Assinaturas recorrentes',['antigo_inicio_assinatura']]
+ ];
+ // linhas da matriz. `g` recebe a coluna agregada; `gasto` so existe na conta, nunca por balde.
+ const LIN=[
+  {n:'Faturamento',   f:R0,  g:o=>o.rec},
+  {n:'% do total',    f:v=>PC(v), g:(o,t)=>dv(o.rec,t.rec)*100, cinza:1},
+  {n:'Compras',       f:IN,  g:o=>o.ped},
+  {n:'Clientes',      f:IN,  g:o=>o.cli},
+  {n:'Ticket médio',  f:R$,  g:o=>dv(o.rec,o.ped)},
+  {n:'Receita/cliente',f:R$, g:o=>dv(o.rec,o.cli)},
+  {n:'Margem',        f:R0,  g:o=>o.marg},
+  {n:'% margem',      f:v=>PC(v), g:o=>dv(o.marg,o.rec)*100, cinza:1}
+ ];
+ const tabela=(defs,titulo,nota)=>{
+  const cols=defs.map(([n,c])=>({n,a:col(A,c),b:B?col(B,c):null}));
+  const tot=cols[0].a;
+  const th=cols.map(c=>`<th style="text-align:right">${c.n}</th>`).join('');
+  const tb=LIN.map(l=>`<tr><td class="l fx${l.cinza?' t3':''}">${l.n}</td>`+cols.map(c=>{
+     const v=l.g(c.a,tot), b=c.b?l.g(c.b,cols[0].b||tot):null;
+     const d=(b!=null&&isFinite(b)&&b!==0&&!l.cinza)?`<div class="c" style="font-size:10.5px">${dlt(v,b)}</div>`:'';
+     return `<td style="text-align:right" class="${l.cinza?'t3':''}">${l.f(v)}${d}</td>`}).join('')+'</tr>').join('');
+  return `<div class="sc"><div class="sch"><div><h2>${titulo}</h2><p>${nota}</p></div></div>
+   <div class="tw"><table><thead><tr><th class="l fx">Métrica</th>${th}</tr></thead>
+   <tbody>${tb}</tbody></table></div></div>`;
+ };
+
+ // manchete: a CONTA, com gasto — que so faz sentido aqui, nunca por balde
+ const conta=col(A,COMPRAS), contaB=B?col(B,COMPRAS):null;
+ const nov=o=>o.p_novo_avulso+o.p_novo_assinatura;
+ const cd=(t,v,b,inv,nota)=>`<div class="cd"><div class="k">${t}</div><div class="v">${v}</div>
+   <div class="c">${b||''}${nota?` <span class="f">${nota}</span>`:''}</div></div>`;
+ const cards=`<div class="gr g6">
+  ${cd('Faturamento da conta',R0(conta.rec),contaB?dlt(conta.rec,contaB.rec):'',0,'novos + recompra + novos assinantes')}
+  ${cd('ROAS da conta',RT(dv(conta.rec,A.spend)),contaB&&B?dlt(dv(conta.rec,A.spend),dv(contaB.rec,B.spend)):'',0,'sobre o gasto total')}
+  ${cd('CAC dos novos',R0(dv(A.spend,nov(conta))),contaB&&B?dltInv(dv(A.spend,nov(conta)),dv(B.spend,nov(contaB))):'',1,IN(nov(conta))+' clientes novos')}
+  ${cd('Investido',R0(A.spend),B?dlt(A.spend,B.spend):'',0,'Meta e WhatsApp por API')}
+ </div>`;
+
+ return `${cards}
+ ${tabela(B1,'Por balde','Amostra e MRR entram no faturamento total, mas nunca no ROAS nem no CAC — por isso a manchete acima usa só Compras.')}
+ ${tabela(B2,'Compras, por tipo de cliente','As quatro categorias que formam A CONTA. Somadas, dão a coluna Compras da tabela de cima.')}
+ <div class="sc"><div class="al o"><b>Clientes não somam na horizontal.</b> Quem comprou avulso e
+  assinou no mesmo período é <b>uma</b> pessoa: cada coluna é a união das identidades, não a soma
+  das contagens. Por isso TOTAL é menor que a soma das colunas.</div>
+  <div class="al w"><b>Gasto não se divide por balde.</b> O mesmo conjunto entrega amostra e compra
+  com um orçamento só. Por isso ROAS e CAC aparecem só na manchete, sobre A CONTA — e não em cada
+  coluna.</div></div>`;
+}
+
 function pgDefinicoes(){
  const F=[
   ['ROAS','Faturamento atribuído ÷ gasto.','receita ÷ gasto','core.vw_app_pedido + vw_mvp_custo_dia','Denominador zero mostra —, nunca zero nem infinito.'],
@@ -1396,7 +1484,7 @@ function render(){
    el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='canais'?pgCanais():
     S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
     S.pg==='semanal'?pgSemanal():
-    S.pg==='resultado'?pgResultado():
+    S.pg==='matriz'?pgMatriz():S.pg==='resultado'?pgResultado():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>
