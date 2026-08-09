@@ -1243,9 +1243,12 @@ function pgCanais(){
      Cada toque leva a campanha do próprio clique. Pedido sem jornada rastreável — cliente que
      voltou e comprou sem passar pelo site, ou WooCommerce legado — cai no <b>canal de aquisição</b>
      com peso inteiro, que é um terço do faturamento e não pode virar "não sei".
+     <b>Direct não recebe crédito</b> quando há outro canal na jornada: visita direta de retorno é
+     consequência, não causa — quem digitou o endereço já conhecia a marca. Se a jornada é só
+     direct, ele fica com tudo, porque não há outro candidato.
      O total do período é idêntico nos três modelos; o que muda é <b>de quem é o crédito</b>.
-     <br><span class="t3">Atenção: jornada com muitas visitas diretas de retorno empurra crédito
-     para <b>direct</b>, que não comprou ninguém. É a limitação conhecida do modelo linear.</span></div>`;
+     <br><span class="t3">Na Cells são 1,17 canais distintos por pedido, então na maioria dos casos
+     este modelo entrega o mesmo que o first click. A diferença aparece na cauda.</span></div>`;
  return `${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
