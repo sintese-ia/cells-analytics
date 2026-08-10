@@ -127,6 +127,35 @@ from b group by 1,2,3,4,5,6,7,8,9,10,11`,
    round(sum((coalesce(basis,'session') in ('session','landing'))::int*peso)::numeric,2) med,
    round(sum((basis='inherited')::int*peso)::numeric,2) inf
  from w group by 1,2,3,4,5,6,7,8`,
+  // SESSOES e VISITANTES NOVOS por (dia, canal, campanha, conjunto, anuncio) — o que faltava para
+  // igualar Sessions / NV / Cost NV do Triple Whale. `nv` = sessao que E a primeira do user_id na
+  // base: e o proxy padrao de visitante novo, e como o user_id e por aparelho, quem volta de outro
+  // celular conta de novo. Julho: 14.191 sessoes, 12.410 novos (87%).
+  sess: `with s as (
+   select w.session_id, min(w.timestamp) ts, min(w.user_id) user_id,
+     (array_agg(nullif(w.utm_campaign,'') order by w.timestamp))[1] campanha,
+     (array_agg(nullif(w.utm_content,'')  order by w.timestamp))[1] conjunto,
+     (array_agg(nullif(w.utm_term,'')     order by w.timestamp))[1] anuncio,
+     (array_agg(case when coalesce(fc.canal,w.source_norm)='google'
+        then case when coalesce(w.gclid,'')<>'' or w.utm_medium in ('cpc','ppc','paid')
+                  then 'google_ads' else 'google_organico' end
+        else coalesce(fc.canal,w.source_norm,'nao-atribuido') end order by w.timestamp))[1] canal
+    from web.sessions w
+    left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
+   where w.timestamp >= '2026-01-01' group by 1),
+  prim as (select user_id, min(ts) primeira from s where user_id is not null group by 1)
+ select s.ts::date dia, s.canal, s.campanha, s.conjunto, s.anuncio,
+   count(*) sessoes,
+   count(*) filter (where p.primeira is not null and s.ts = p.primeira) nv
+ from s left join prim p on p.user_id = s.user_id
+ group by 1,2,3,4,5`,
+  // OBJETIVO REAL do Meta, que ja vinha coletado em ads.meta_ads_raw e eu nao usava. Separa topo de
+  // funil de conversao SEM ninguem rotular nada. (Nao resolve "amostra x venda": para o Meta as duas
+  // sao OUTCOME_SALES — foi por isso que a classificacao manual de 07/08 falhou.)
+  metaobj: `select campaign_name campanha, adset_name conjunto,
+   mode() within group (order by objective) objetivo
+  from ads.meta_ads_raw where date_start >= '2026-01-01'
+  group by 1,2`,
   plat: `select date_start::date dia,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita

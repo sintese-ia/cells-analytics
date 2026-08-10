@@ -1145,6 +1145,33 @@ function pgCanais(){
   }
  }
  for(const x of spend){ if(inP(x.dia,jf2)) GS[x.fonte]=(GS[x.fonte]||0)+(+x.custo||0) }
+ // SESSOES / VISITANTES NOVOS — mesma chave da arvore, entao casam em qualquer nivel.
+ const SE={};
+ for(const r of (D.sess||[])){
+  const d=String(r.dia).slice(0,10); if(!inP(d,jf2))continue;
+  const c=r.canal||'nao-atribuido', cp=r.campanha||'(sem campanha)',
+        cj=r.conjunto||'(sem conjunto)', an=r.anuncio||'(sem anúncio)';
+  for(const k of [c, c+'|'+cp, c+'|'+cp+'|'+cj, c+'|'+cp+'|'+cj+'|'+an]){
+   const o=SE[k]||(SE[k]={sessoes:0,nv:0}); o.sessoes+=(+r.sessoes||0); o.nv+=(+r.nv||0) }
+ }
+ // RECEITA QUE O META SE ATRIBUI, para a coluna de comparacao. Vem de vw_campanha_dia_real, grao de
+ // conjunto — no anuncio fica em branco de proposito.
+ const MP={};
+ for(const r of (D.camp||[])){
+  const d=String(r.dia).slice(0,10); if(!inP(d,jf2))continue;
+  // 'meta' sozinho tambem: sem ele a coluna ficava vazia justo na linha do canal, que e onde a
+  // comparacao com o nosso numero mais importa.
+  for(const k of ['meta', 'meta|'+r.campanha, 'meta|'+r.campanha+'|'+r.conjunto]){
+   const o=MP[k]||(MP[k]={rec:0,comp:0}); o.rec+=(+r.receita_plat||0); o.comp+=(+r.compras_plat||0) }
+ }
+ // OBJETIVO declarado no Meta (OUTCOME_SALES, OUTCOME_AWARENESS...), ja coletado.
+ const OBJM={}; (D.metaobj||[]).forEach(r=>{
+  OBJM['meta|'+r.campanha]=r.objetivo; OBJM['meta|'+r.campanha+'|'+r.conjunto]=r.objetivo });
+ const ses=cam=>SE[cam.split('›').join('|')]||null;
+ const mplat=cam=>MP[cam.split('›').join('|')]||null;
+ const objm=cam=>OBJM[cam.split('›').join('|')]||null;
+ const OBJN={OUTCOME_SALES:'Vendas',OUTCOME_ENGAGEMENT:'Engajamento',
+             OUTCOME_AWARENESS:'Alcance',LINK_CLICKS:'Cliques',OUTCOME_TRAFFIC:'Tráfego'};
  // `cam` ja comeca pelo canal, entao a chave inteira casa com a do grid.
  const plt=(no,cam)=>no.lv===1?null:(PL[cam.split('›').join('|')]||null);
  const gst=(no,cam)=>{ if(no.lv===1)return GS[no.n]||0; const q=plt(no,cam); return q?q.spend:0 };
@@ -1219,6 +1246,18 @@ function pgCanais(){
   {k:'atc',t:'ATC',f:(a,q)=>q?IN(q.plat_atc):'<span class="na">—</span>',v:(a,q)=>q?q.plat_atc:null,p:1},
   {k:'catc',t:'Cost ATC',f:(a,q,g)=>R0(cst(g,q&&q.plat_atc)),v:(a,q,g)=>cst(g,q&&q.plat_atc),p:1},
   {k:'ck',t:'Start Checkout',f:(a,q)=>q?IN(q.plat_checkout):'<span class="na">—</span>',v:(a,q)=>q?q.plat_checkout:null,p:1},
+  // sessao medida por NOS, nao reportada pela plataforma — por isso nao vai em cinza
+  {k:'ses',t:'Sessions',tip:'Sessões medidas no site, não reportadas pela plataforma.',
+   f:(a,q,g,e)=>e?IN(e.sessoes):'<span class="na">—</span>',v:(a,q,g,e)=>e?e.sessoes:null},
+  {k:'nv',t:'NV',tip:'Visitantes novos: sessão que é a primeira daquele aparelho na base. Quem volta de outro celular conta de novo.',
+   f:(a,q,g,e)=>e?IN(e.nv):'<span class="na">—</span>',v:(a,q,g,e)=>e?e.nv:null},
+  {k:'cnv',t:'Cost NV',tip:'Gasto ÷ visitantes novos.',
+   f:(a,q,g,e)=>R$(cst(g,e&&e.nv)),v:(a,q,g,e)=>cst(g,e&&e.nv)},
+  {k:'roasm',t:'ROAS Meta',p:1,
+   tip:'ROAS pelo que o META se credita, não pelo pedido. Serve para ver a DISTÂNCIA entre os dois — em julho o Meta se atribui 35% a mais que o pedido mostra. Nunca somar com a coluna ROAS.',
+   f:(a,q,g,e,m)=>RT(m&&g?dv(m.rec,g):null),v:(a,q,g,e,m)=>m&&g?dv(m.rec,g):null},
+  {k:'objm',t:'Objetivo',p:1,tip:'Objetivo declarado no Meta. Separa topo de funil de conversão sem ninguém rotular nada.',
+   f:(a,q,g,e,m,o)=>o?(OBJN[o]||o):'<span class="na">—</span>',v:(a,q,g,e,m,o)=>o?(o==='OUTCOME_SALES'?3:o==='LINK_CLICKS'?2:1):null},
   {k:'cr',t:'CR',f:(a,q)=>(q&&q.plat_lpv)?PC(100*a.ped/q.plat_lpv,2):'<span class="na">—</span>',
    v:(a,q)=>(q&&q.plat_lpv)?100*a.ped/q.plat_lpv:null,p:1}
  ];
@@ -1234,15 +1273,16 @@ function pgCanais(){
  const TODAS=COLS, VIS=COLS.filter(c=>!(S.oc[S.pg]||{})[c.k]);
  const col=VIS.find(c=>c.k===S.gord)||VIS[0];
  const ord=l=>l.sort((x,y)=>{
-   const a=col.v(x.no.a,plt(x.no,x.cam),gst(x.no,x.cam)),
-         b=col.v(y.no.a,plt(y.no,y.cam),gst(y.no,y.cam));
+   const a=col.v(x.no.a,plt(x.no,x.cam),gst(x.no,x.cam),ses(x.cam),mplat(x.cam),objm(x.cam)),
+         b=col.v(y.no.a,plt(y.no,y.cam),gst(y.no,y.cam),ses(y.cam),mplat(y.cam),objm(y.cam));
    if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
  const out=[];
  const linha=(no,cam)=>{
    const filhos=no.f?Object.values(no.f).filter(x=>x.a.rec>0||x.a.ped>0):[];
-   const tem=filhos.length>0, ab=!!S.gop[cam], q=plt(no,cam), g=gst(no,cam);
-   const tds=VIS.map(c=>{const v=c.v(no.a,q,g),k=cor(c,v,no.a);
-     return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a,q,g)}</td>`}).join('');
+   const tem=filhos.length>0, ab=!!S.gop[cam], q=plt(no,cam), g=gst(no,cam),
+         e=ses(cam), m=mplat(cam), o=objm(cam);
+   const tds=VIS.map(c=>{const v=c.v(no.a,q,g,e,m,o),k=cor(c,v,no.a);
+     return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a,q,g,e,m,o)}</td>`}).join('');
    out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-1)*16}px">`
     +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`
         :'<span style="display:inline-block;width:13px"></span>')
@@ -1259,7 +1299,7 @@ function pgCanais(){
  raiz.forEach(x=>{for(const k in x.a)if(typeof x.a[k]==='number')tot[k]=(tot[k]||0)+x.a[k]});
  uneKS(tot,raiz.map(x=>x.a));
  out.push(`<tr class="tot"><td class="l fx">TOTAL</td>`
-   +VIS.map(c=>`<td class="${c.p?'t3':''}">${c.f(tot,null,totG)}</td>`).join('')+`</tr>`);
+   +VIS.map(c=>`<td class="${c.p?'t3':''}">${c.f(tot,null,totG,null,null,null)}</td>`).join('')+`</tr>`);
  const th=VIS.map(c=>`<th data-gord="${c.k}" title="${c.tip||''}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
  const canais=Object.keys(A.arv||{}).sort();
  const sel=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
@@ -1477,7 +1517,7 @@ function pgConfig(){
 /* ==================== barra de filtros ==================== */
 function filtros(){
  const PER=[['hoje','Hoje'],['ontem','Ontem'],['7','Últimos 7 dias'],['30','Últimos 30 dias'],
-  ['mes','Este mês'],['mesant','Mês anterior'],['ano','Este ano'],['tudo','Todo o histórico'],['custom','Personalizado']];
+  ['mes','Este mês'],['mesant','Mês anterior'],['ano','Este ano'],['tudo','Todo o histórico'],['custom','📅 Escolher datas…']];
  const CMP=[['prev','Período anterior'],['mesant','Mesmo período do mês anterior'],
   ['anoant','Mesmo período do ano anterior'],['none','Sem comparação']];
  const MOD=[['sintese','Síntese'],['first','First click'],['last','Last click'],['plataforma','Plataformas']];
@@ -1487,8 +1527,9 @@ function filtros(){
    ${Object.entries(BALDE).map(([k,v])=>`<button data-bal="${k}" class="${S.bal===k?'on':''}" title="${v.d}">${v.n}</button>`).join('')}
   </div></div>
   <div class="fg"><label for="fp">Período</label><select id="fp">${PER.map(([v,n])=>`<option value="${v}" ${S.per===v?'selected':''}>${n}</option>`).join('')}</select></div>
-  ${S.per==='custom'?`<div class="fg"><input type="date" id="d1" value="${S.d1||MIN}" min="${MIN}" max="${MAX}" aria-label="Data inicial">
-   <input type="date" id="d2" value="${S.d2||MAX}" min="${MIN}" max="${MAX}" aria-label="Data final"></div>`:''}
+  ${S.per==='custom'?`<div class="fg"><label>De · até</label><div style="display:flex;gap:5px">
+   <input type="date" id="d1" value="${S.d1||MIN}" min="${MIN}" max="${MAX}" aria-label="Data inicial">
+   <input type="date" id="d2" value="${S.d2||MAX}" min="${MIN}" max="${MAX}" aria-label="Data final"></div></div>`:''}
   <div class="fg"><label for="fc">Comparar</label><select id="fc">${CMP.map(([v,n])=>`<option value="${v}" ${S.cmp===v?'selected':''}>${n}</option>`).join('')}</select></div>
   <div class="fg"><label for="fm">Atribuição</label><select id="fm">${MOD.map(([v,n])=>`<option value="${v}" ${S.mod===v?'selected':''}>${n}${v==='sintese'?' ★ recomendado':''}</option>`).join('')}</select></div>
   <div class="fg"><label for="fch">Canal</label><select id="fch"><option value="">Todos</option>${CANAIS.map(c=>`<option value="${c}" ${S.can===c?'selected':''}>${c}</option>`).join('')}</select></div>
