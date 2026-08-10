@@ -1156,11 +1156,27 @@ function pgCanais(){
  const NC=a=>a.p_novo_avulso+a.p_novo_assinatura;
  const NCR=a=>a.r_novo_avulso+a.r_novo_assinatura;
  const NCM=a=>a.m_novo_avulso+a.m_novo_assinatura;
- const CONTA=a=>a.r_novo_avulso+a.r_antigo_avulso+a.r_novo_assinatura+a.r_antigo_inicio_assinatura;
+ // A CONTA em DOIS CORTES independentes, a pedido do Gabriel (10/08). Sao as mesmas 4 categorias
+ // lidas por dois eixos, e cada par soma o mesmo total:
+ //        NC + CA  =  CU + ASS  =  A CONTA
+ //   quem comprou           |  o que comprou
+ //   NC  novo_avulso + novo_assinatura        CU   novo_avulso + antigo_avulso
+ //   CA  antigo_avulso + antigo_inicio_assin  ASS  novo_assinatura + antigo_inicio_assin
+ // Substitui a coluna unica "Conta", que dava o total sem dizer de onde vinha.
+ const NC_ =a=>a.r_novo_avulso+a.r_novo_assinatura;
+ const CA_ =a=>a.r_antigo_avulso+a.r_antigo_inicio_assinatura;
+ const CU_ =a=>a.r_novo_avulso+a.r_antigo_avulso;
+ const ASS_=a=>a.r_novo_assinatura+a.r_antigo_inicio_assinatura;
  const COLS=[
   {k:'rec',t:'Faturamento',f:a=>R0(a.rec),v:a=>a.rec},
-  {k:'conta',t:'Conta',tip:'Novos + recompra + novos assinantes. Amostra e MRR ficam fora.',
-   f:a=>R0(CONTA(a)),v:a=>CONTA(a)},
+  {k:'nc',t:'NC',tip:'Faturamento de CLIENTES NOVOS (primeira compra paga, avulsa ou assinatura). NC + CA = a conta.',
+   f:a=>R0(NC_(a)),v:a=>NC_(a)},
+  {k:'ca',t:'CA',tip:'Faturamento de CLIENTES ANTIGOS (recompra e antigo que iniciou assinatura). NC + CA = a conta.',
+   f:a=>R0(CA_(a)),v:a=>CA_(a)},
+  {k:'cu',t:'CU',tip:'Faturamento de COMPRA ÚNICA, novo ou antigo. CU + ASS = a conta — é o mesmo total lido por outro eixo.',
+   f:a=>R0(CU_(a)),v:a=>CU_(a)},
+  {k:'ass',t:'ASS',tip:'Faturamento de ASSINATURA iniciada no período, de cliente novo ou antigo. Renovação (MRR) NÃO entra. CU + ASS = a conta.',
+   f:a=>R0(ASS_(a)),v:a=>ASS_(a)},
   {k:'gasto',t:'Gasto',f:(a,q,g)=>g>0?R0(g):'<span class="na">—</span>',v:(a,q,g)=>g},
   {k:'roas',t:'ROAS',f:(a,q,g)=>RT(dv(a.rec,g)),v:(a,q,g)=>dv(a.rec,g),c:'roas'},
   {k:'ped',t:'Compras',f:a=>IN(a.ped),v:a=>a.ped},
@@ -1263,7 +1279,9 @@ function pgCanais(){
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
   Faturamento, compras, clientes e margem vêm sempre do pedido atribuído — por isso filho sempre
   soma no pai e a tela concorda com Resumo e Semanal. Colunas em <span class="t3">cinza</span> são
-  reportadas pelo Meta e só existem lá.</p></div>
+  reportadas pelo Meta e só existem lá.<br>
+  <b>NC · CA · CU · ASS</b> são a mesma conta lida por dois eixos: <b>quem comprou</b> (novo ou
+  antigo) e <b>o que comprou</b> (avulso ou assinatura). <b>NC+CA = CU+ASS</b>, sempre.</p></div>
   <div class="sg">${sel}<input type="search" data-gbusca placeholder="Buscar campanha..." value="${S.gbusca||''}" aria-label="Buscar campanha"></div></div>
   <div class="pnh"><h3>Colunas</h3>${colToggle(TODAS)}</div>
   <div class="tw"><table><thead><tr><th class="l fx">Canal / campanha</th>${th}</tr></thead>
@@ -1298,18 +1316,21 @@ function pgMatriz(){
   return uneKS(o,cats.map(c=>X.cat[c]).filter(Boolean));
  };
  const COMPRAS=['novo_avulso','antigo_avulso','novo_assinatura','antigo_inicio_assinatura'];
+ // `g:1` = a coluna tem denominador de gasto. O gasto e da CONTA e nao se divide por balde (o mesmo
+ // conjunto entrega amostra e compra com um orcamento so), entao ele aparece em TOTAL e em Compras —
+ // o mesmo valor, duas leituras — e nunca em MRR ou Amostras, onde dividir seria inventar.
  const B1=[
-  ['TOTAL',    ORD],
-  ['Compras',  COMPRAS],
-  ['MRR',      ['recorrente']],
-  ['Amostras', ['amostra']]
+  ['TOTAL',    ORD,           1],
+  ['Compras',  COMPRAS,       1],
+  ['MRR',      ['recorrente'], 0],
+  ['Amostras', ['amostra'],    0]
  ];
  const B2=[
-  ['Compras totais',        COMPRAS],
-  ['Compras novos',         ['novo_avulso']],
-  ['Assinaturas novos',     ['novo_assinatura']],
-  ['Compras recorrentes',   ['antigo_avulso']],
-  ['Assinaturas recorrentes',['antigo_inicio_assinatura']]
+  ['Compras totais',        COMPRAS,                    1],
+  ['Compras novos',         ['novo_avulso'],            0],
+  ['Assinaturas novos',     ['novo_assinatura'],        0],
+  ['Compras recorrentes',   ['antigo_avulso'],          0],
+  ['Assinaturas recorrentes',['antigo_inicio_assinatura'],0]
  ];
  // linhas da matriz. `g` recebe a coluna agregada; `gasto` so existe na conta, nunca por balde.
  const LIN=[
@@ -1320,13 +1341,20 @@ function pgMatriz(){
   {n:'Ticket médio',  f:R$,  g:o=>dv(o.rec,o.ped)},
   {n:'Receita/cliente',f:R$, g:o=>dv(o.rec,o.cli)},
   {n:'Margem',        f:R0,  g:o=>o.marg},
-  {n:'% margem',      f:v=>PC(v), g:o=>dv(o.marg,o.rec)*100, cinza:1}
+  {n:'% margem',      f:v=>PC(v), g:o=>dv(o.marg,o.rec)*100, cinza:1},
+  // so nas colunas com denominador. Onde nao ha, a celula fica "—" em vez de zero.
+  {n:'Gasto de mídia', f:R0,  g:o=>A.spend,                       custo:1},
+  {n:'ROAS',           f:RT,  g:o=>dv(o.rec,A.spend),             custo:1},
+  {n:'CPA',            f:R$,  g:o=>dv(A.spend,o.ped),             custo:1},
+  {n:'CAC de novo',    f:R$,  g:o=>dv(A.spend,o.p_novo_avulso+o.p_novo_assinatura), custo:1},
+  {n:'Margem por real',f:RT,  g:o=>dv(o.marg,A.spend),            custo:1}
  ];
  const tabela=(defs,titulo,nota)=>{
-  const cols=defs.map(([n,c])=>({n,a:col(A,c),b:B?col(B,c):null}));
+  const cols=defs.map(([n,c,g])=>({n,g,a:col(A,c),b:B?col(B,c):null}));
   const tot=cols[0].a;
   const th=cols.map(c=>`<th style="text-align:right">${c.n}</th>`).join('');
-  const tb=LIN.map(l=>`<tr><td class="l fx${l.cinza?' t3':''}">${l.n}</td>`+cols.map(c=>{
+  const tb=LIN.map(l=>`<tr${l.custo?' class="sub"':''}><td class="l fx${l.cinza?' t3':''}">${l.n}</td>`+cols.map(c=>{
+     if(l.custo&&!c.g) return '<td style="text-align:right" class="t3">—</td>';
      const v=l.g(c.a,tot), b=c.b?l.g(c.b,cols[0].b||tot):null;
      const d=(b!=null&&isFinite(b)&&b!==0&&!l.cinza)?`<div class="c" style="font-size:10.5px">${dlt(v,b)}</div>`:'';
      return `<td style="text-align:right" class="${l.cinza?'t3':''}">${l.f(v)}${d}</td>`}).join('')+'</tr>').join('');
@@ -1354,8 +1382,10 @@ function pgMatriz(){
   assinou no mesmo período é <b>uma</b> pessoa: cada coluna é a união das identidades, não a soma
   das contagens. Por isso TOTAL é menor que a soma das colunas.</div>
   <div class="al w"><b>Gasto não se divide por balde.</b> O mesmo conjunto entrega amostra e compra
-  com um orçamento só. Por isso ROAS e CAC aparecem só na manchete, sobre A CONTA — e não em cada
-  coluna.</div></div>`;
+  com um orçamento só — separar exigiria ratear, e ratear pelo resultado é circular. Por isso o gasto
+  aparece <b>inteiro</b> em TOTAL e em Compras (o mesmo valor, duas leituras) e como <b>—</b> em MRR
+  e Amostras. <b>ROAS da conta é a linha da coluna Compras</b>; a de TOTAL inclui amostra e renovação
+  no numerador e serve só para dimensionar, não para decidir mídia.</div></div>`;
 }
 
 function pgDefinicoes(){
