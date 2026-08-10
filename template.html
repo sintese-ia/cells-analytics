@@ -1167,6 +1167,10 @@ function pgCanais(){
  const CA_ =a=>a.r_antigo_avulso+a.r_antigo_inicio_assinatura;
  const CU_ =a=>a.r_novo_avulso+a.r_antigo_avulso;
  const ASS_=a=>a.r_novo_assinatura+a.r_antigo_inicio_assinatura;
+ // AM fecha a conta de cima: nesta tela a renovacao ja esta fora por regra, entao
+ //     NC + CA + AM  =  CU + ASS + AM  =  Faturamento
+ // Sem ela, a soma das colunas nao batia com a primeira e parecia dado faltando.
+ const AM_ =a=>a.r_amostra;
  const COLS=[
   {k:'rec',t:'Faturamento',f:a=>R0(a.rec),v:a=>a.rec},
   {k:'nc',t:'NC',tip:'Faturamento de CLIENTES NOVOS (primeira compra paga, avulsa ou assinatura). NC + CA = a conta.',
@@ -1177,6 +1181,8 @@ function pgCanais(){
    f:a=>R0(CU_(a)),v:a=>CU_(a)},
   {k:'ass',t:'ASS',tip:'Faturamento de ASSINATURA iniciada no período, de cliente novo ou antigo. Renovação (MRR) NÃO entra. CU + ASS = a conta.',
    f:a=>R0(ASS_(a)),v:a=>ASS_(a)},
+  {k:'amr',t:'AM',tip:'Faturamento de AMOSTRA. Fica fora da conta, mas fecha o faturamento: NC+CA+AM = CU+ASS+AM = Faturamento. Para julgar amostra use Cost/Sample, não CAC.',
+   f:a=>a.r_amostra?R0(AM_(a)):'<span class="na">—</span>',v:a=>AM_(a)},
   {k:'gasto',t:'Gasto',f:(a,q,g)=>g>0?R0(g):'<span class="na">—</span>',v:(a,q,g)=>g},
   {k:'roas',t:'ROAS',f:(a,q,g)=>RT(dv(a.rec,g)),v:(a,q,g)=>dv(a.rec,g),c:'roas'},
   {k:'ped',t:'Compras',f:a=>IN(a.ped),v:a=>a.ped},
@@ -1281,7 +1287,8 @@ function pgCanais(){
   soma no pai e a tela concorda com Resumo e Semanal. Colunas em <span class="t3">cinza</span> são
   reportadas pelo Meta e só existem lá.<br>
   <b>NC · CA · CU · ASS</b> são a mesma conta lida por dois eixos: <b>quem comprou</b> (novo ou
-  antigo) e <b>o que comprou</b> (avulso ou assinatura). <b>NC+CA = CU+ASS</b>, sempre.</p></div>
+  antigo) e <b>o que comprou</b> (avulso ou assinatura). <b>AM</b> é amostra, que fica fora da conta.
+  Então <b>NC+CA+AM = CU+ASS+AM = Faturamento</b>, sempre — dá para conferir na horizontal.</p></div>
   <div class="sg">${sel}<input type="search" data-gbusca placeholder="Buscar campanha..." value="${S.gbusca||''}" aria-label="Buscar campanha"></div></div>
   <div class="pnh"><h3>Colunas</h3>${colToggle(TODAS)}</div>
   <div class="tw"><table><thead><tr><th class="l fx">Canal / campanha</th>${th}</tr></thead>
