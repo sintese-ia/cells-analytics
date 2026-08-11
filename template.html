@@ -1019,13 +1019,20 @@ function pgMensal(){
 // e 93% dos pedidos de julho sairam com frete gratis — o custo existia e nao aparecia em lugar
 // nenhum. Fonte em core.vw_dre_dia (cells-infra/fixes/2026-08-08-vw-dre-dia.sql).
 //
+// 11/08: esta tela lia uma view montada sobre `commerce.orders_enriched`, que e SO Shopify,
+// enquanto todo o resto do painel le `core.vw_app_pedido` (Shopify + Woo). Dava dois faturamentos
+// para o mesmo mes no mesmo painel — julho R$ 29.989,01 aqui contra R$ 31.906,21 no Resumo — e
+// inflava o prejuizo em 19,3%. A view foi corrigida (2026-08-11-vw-dre-dia-inclui-woo.sql) e agora
+// bate com core.vw_kpi_mes em 20 de 20 meses.
+//
 // NAO respeita balde nem canal de proposito: e o resultado do negocio inteiro, nao de um recorte.
 // Respeitar o filtro de canal daria um "resultado" por canal que subtrai a midia do canal mas
 // carrega o CMV do negocio todo — numero sem significado.
 function pgResultado(){
  const j=jan(), R=(D.dre||[]).filter(r=>inP(String(r.dia).slice(0,10),j));
  if(!R.length) return `<div class="emp">Sem dado no período. Confira <code>core.vw_dre_dia</code>.</div>`;
- const K=['pedidos','pedidos_sem_cmv','pedidos_frete_estimado','valor_tabela','descontos','faturamento','cmv','taxas',
+ const K=['pedidos','pedidos_sem_cmv','pedidos_frete_estimado','pedidos_fora_do_bling','valor_tabela','descontos',
+          'reembolsos','faturamento','cmv','taxas',
           'frete_cobrado','frete_liquido','midia','margem_contribuicao','resultado'];
  const T=Object.fromEntries(K.map(k=>[k,R.reduce((a,r)=>a+(+r[k]||0),0)]));
  const pf=v=>T.faturamento?PC(100*v/T.faturamento):'—';
@@ -1052,6 +1059,8 @@ function pgResultado(){
       'Soma dos pedidos antes de desconto (total_price + total_discounts).')}
   ${L('Descontos',-T.descontos,'(−)','',
       'Cupons e promoções concedidos. Em julho foi 5,9% do valor de tabela.')}
+  ${T.reembolsos>0?L('Reembolsos',-T.reembolsos,'(−)','',
+      'Estornos ao cliente. Saem do faturamento para esta tela bater com o Resumo, que também lê o valor líquido de reembolso.'):''}
   ${L('Faturamento cobrado',T.faturamento,'=','1')}
   ${L('Custo do produto (CMV)',-T.cmv,'(−)','',
       'Custo unitário por SKU em commerce.produto_custo.')}
@@ -1094,7 +1103,12 @@ function pgResultado(){
       pedido — <b>${IN(T.pedidos-T.pedidos_frete_estimado)} de ${IN(T.pedidos)}</b> deste período.
       ${IN(T.pedidos_frete_estimado)} sem <code>volume_id</code> caem no parâmetro declarado
       <code>frete_medio_por_envio</code>. O rastreio só grava <code>volume_id</code> desde
-      <b>14/04/2026</b> — antes disso tudo é estimativa.</div>`
+      <b>14/04/2026</b> — antes disso tudo é estimativa.${
+      T.pedidos_fora_do_bling>0
+       ? ` Desses, <b>${IN(T.pedidos_fora_do_bling)}</b> ${T.pedidos_fora_do_bling===1?'é pedido do':'são pedidos do'}
+          <b>WooCommerce</b> (assinatura legado do CellsClub), que não passa pelo Bling: o frete
+          ${T.pedidos_fora_do_bling===1?'dele':'deles'} <b>nunca</b> será medido, sempre o parâmetro declarado.`
+       : ''}</div>`
    : `<div class="al o"><b>O frete é real, do Bling</b> (<code>logisticas/objetos</code>), em todos
       os ${IN(T.pedidos)} pedidos do período. Nenhuma estimativa aqui.</div>`,
   T.pedidos_sem_cmv>0

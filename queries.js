@@ -247,8 +247,19 @@ from core.vw_payback_coorte order by mes, canal`,
   // Pedido sem volume_id cai no parametro declarado `frete_medio_por_envio` — `pedidos_frete_estimado`
   // conta quantos, para a tela nunca apresentar estimativa como medicao.
   // Ver cells-infra/fixes/2026-08-08-vw-dre-dia.sql e 2026-08-08-frete-real-bling.sql.
+  //
+  // 11/08: a view passou a ler `core.vw_app_pedido` (Shopify + WooCommerce) no lugar de
+  // `commerce.orders_enriched` (so Shopify), com a fronteira de dia em America/Sao_Paulo, igual
+  // ao resto do painel. Antes esta tela mostrava um faturamento DIFERENTE do das outras para o
+  // mesmo mes — julho dava R$ 29.989,01 aqui e R$ 31.906,21 no Resumo, porque os 11 pedidos do
+  // Woo (assinantes legado do CellsClub) nao existiam nesta tela. Agora bate com
+  // `core.vw_kpi_mes.fat_total` em 20 de 20 meses. Ver 2026-08-11-vw-dre-dia-inclui-woo.sql.
+  // `reembolsos` fecha a cascata (tabela - descontos - reembolso = faturamento) e
+  // `pedidos_fora_do_bling` conta os pedidos que NUNCA terao frete medido (o Woo nao passa pelo
+  // Bling), para a tela nao apresentar estimativa como medicao.
   dre: `select dia, pedidos, pedidos_sem_cmv, pedidos_frete_estimado, valor_tabela, descontos, faturamento,
-   cmv, taxas, frete_cobrado, frete_liquido, midia, margem_contribuicao, resultado
+   cmv, taxas, frete_cobrado, frete_liquido, midia, margem_contribuicao, resultado,
+   reembolsos, pedidos_fora_do_bling
   from core.vw_dre_dia where dia >= '2025-01-01'`,
   // --- Grid de midia: canal > campanha > conjunto > anuncio ---
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
