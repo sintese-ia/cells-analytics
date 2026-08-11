@@ -348,6 +348,24 @@ function agg(j,{canalView=false}={}){
     t['r_'+r.categoria]+=v*w;t['p_'+r.categoria]+=r.pedidos*w;t['m_'+r.categoria]+=r.marg*w}
   }
  }
+ // RAMOS QUE SO TEM ACESSO. A arvore nascia so de PEDIDO, entao canal que traz gente e nao vende
+ // simplesmente nao existia na tela — foi assim que os 13 cliques de creator ficaram invisiveis
+ // mesmo depois de o `source_norm` ser consertado. Aqui os nos faltantes sao criados zerados; as
+ // colunas Sessions/NV se penduram neles pelo mesmo `SE` de sempre.
+ // Sao poucos: em jul+ago, so nutri, creator, parceria, evento e ia caem nesse caso.
+ for(const r of (D.sess||[])){
+  if(!inP(r.dia,j))continue;
+  const c=r.canal||'nao-atribuido';
+  if(S.can&&c!==S.can)continue;
+  if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
+  const nomeC=r.campanha||'(sem campanha)', nomeJ=r.conjunto||'(sem conjunto)',
+        nomeA=r.anuncio||'(sem anúncio)';
+  const n1=A.arv[c]||(A.arv[c]={n:c,lv:1,a:Z(),f:{}});
+  const n2=n1.f[nomeC]||(n1.f[nomeC]={n:nomeC,lv:2,a:Z(),f:{}});
+  const n3=n2.f[nomeJ]||(n2.f[nomeJ]={n:nomeJ,lv:3,a:Z(),f:{}});
+  n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
+  A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
+ }
  // cli = tamanho da uniao, nunca soma de contagens
  A.cli=A.ks.size;
  for(const o of Object.values(A.can))o.cli=o.ks.size;
@@ -1303,7 +1321,8 @@ function pgCanais(){
     +`${no.n}</td>${tds}</tr>`);
    if(tem&&ab) ord(filhos.map(f=>({no:f,cam:cam+'›'+f.n}))).forEach(x=>linha(x.no,x.cam));
  };
- let raiz=Object.values(A.arv||{}).filter(x=>x.a.rec>0||x.a.ped>0);
+ // canal sem receita fica se tiver ACESSO — e o caso de creator, nutri, parceria, evento e ia.
+ let raiz=Object.values(A.arv||{}).filter(x=>x.a.rec>0||x.a.ped>0||(SE[x.n]&&SE[x.n].sessoes>0));
  const bq=(S.gbusca||'').toLowerCase();
  if(bq) raiz=raiz.filter(x=>x.n.toLowerCase().includes(bq)
    ||Object.keys(x.f||{}).some(k=>String(k).toLowerCase().includes(bq)));
