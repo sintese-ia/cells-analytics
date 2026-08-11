@@ -366,6 +366,23 @@ function agg(j,{canalView=false}={}){
   n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
   A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
  }
+ // ...e os ramos que so tem GASTO. Criativo queimando dinheiro sem vender uma unica vez e
+ // exatamente o que se quer enxergar, e ele nao tinha linha: no CJ2 da TP_CP3 faltavam R$ 24 do
+ // TP07, que gastou e nao vendeu, entao os filhos nao somavam o pai.
+ for(const r of (D.grid||[])){
+  if(!inP(String(r.dia).slice(0,10),j))continue;
+  if(!(+r.spend>0))continue;
+  const c=r.canal||'nao-atribuido';
+  if(S.can&&c!==S.can)continue;
+  if(S.gru&&(GRUPO[c]||'Outros')!==S.gru)continue;
+  const nomeC=r.campanha||'(sem campanha)', nomeJ=r.conjunto||'(sem conjunto)',
+        nomeA=r.anuncio||'(sem anúncio)';
+  const n1=A.arv[c]||(A.arv[c]={n:c,lv:1,a:Z(),f:{}});
+  const n2=n1.f[nomeC]||(n1.f[nomeC]={n:nomeC,lv:2,a:Z(),f:{}});
+  const n3=n2.f[nomeJ]||(n2.f[nomeJ]={n:nomeJ,lv:3,a:Z(),f:{}});
+  n3.f[nomeA]||(n3.f[nomeA]={n:nomeA,lv:4,a:Z(),f:null});
+  A.can[c]||(A.can[c]=Object.assign(Z(),{canal:c}));
+ }
  // cli = tamanho da uniao, nunca soma de contagens
  A.cli=A.ks.size;
  for(const o of Object.values(A.can))o.cli=o.ks.size;
@@ -1310,7 +1327,11 @@ function pgCanais(){
    if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
  const out=[];
  const linha=(no,cam)=>{
-   const filhos=no.f?Object.values(no.f).filter(x=>x.a.rec>0||x.a.ped>0):[];
+   // filho fica se tiver receita, GASTO ou ACESSO. So receita escondia o criativo que gastou e nao
+   // vendeu — e a soma dos filhos nao fechava com o pai.
+   const filhos=no.f?Object.values(no.f).filter(x=>{
+     const cf=cam+'›'+x.n;
+     return x.a.rec>0||x.a.ped>0||gst(x,cf)>0||(SE[cf]&&SE[cf].sessoes>0)}):[];
    const tem=filhos.length>0, ab=!!S.gop[cam], q=plt(no,cam), g=gst(no,cam),
          e=ses(cam), m=mplat(cam), o=objm(cam);
    const tds=VIS.map(c=>{const v=c.v(no.a,q,g,e,m,o),k=cor(c,v,no.a);
@@ -1322,7 +1343,8 @@ function pgCanais(){
    if(tem&&ab) ord(filhos.map(f=>({no:f,cam:cam+'›'+f.n}))).forEach(x=>linha(x.no,x.cam));
  };
  // canal sem receita fica se tiver ACESSO — e o caso de creator, nutri, parceria, evento e ia.
- let raiz=Object.values(A.arv||{}).filter(x=>x.a.rec>0||x.a.ped>0||(SE[x.n]&&SE[x.n].sessoes>0));
+ let raiz=Object.values(A.arv||{}).filter(x=>x.a.rec>0||x.a.ped>0||gst(x,x.n)>0
+   ||(SE[x.n]&&SE[x.n].sessoes>0));
  const bq=(S.gbusca||'').toLowerCase();
  if(bq) raiz=raiz.filter(x=>x.n.toLowerCase().includes(bq)
    ||Object.keys(x.f||{}).some(k=>String(k).toLowerCase().includes(bq)));

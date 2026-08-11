@@ -89,17 +89,33 @@ module.exports = {
       order by w.timestamp desc
       limit 1) ls on true
   where p.created_at>='2025-01-01')
-select created_at::date dia, canal, canal_aq, sistema, categoria,
- nullif(campanha,'') campanha, nullif(adset,'') conjunto, nullif(anuncio,'') anuncio,
- campanha_l, conjunto_l, anuncio_l,
- count(*) pedidos, count(distinct kid) clientes, array_agg(distinct kid) ks,
- round(sum(bruto)::numeric,2) bruto, round(sum(desconto)::numeric,2) desc_,
- round(sum(reembolso)::numeric,2) reemb, round(sum(liquido)::numeric,2) liq,
- round(sum(cmv)::numeric,2) cmv, round(sum(margem)::numeric,2) marg,
- sum((cmv_ok)::int) cmv_ok,
- sum((coalesce(basis,'session') in ('session','landing'))::int) med,
- sum((basis='inherited')::int) inf
-from b group by 1,2,3,4,5,6,7,8,9,10,11`,
+-- NIVEL REAL DO META, nao o que a UTM diz. As campanhas nao usam a mesma convencao:
+--   2026_07_W1_LPS_ANGULOS  content=conjunto           term=anuncio        (certo)
+--   TP_CP3_..._040826       content=ANUNCIO            term=adset_id       (deslocado 1 nivel)
+-- Sem resolver, a TP_CP3 abria direto em anuncio enquanto a W1 abria em conjunto — e o gasto do
+-- grid (que vem na hierarquia certa do Meta) nao casava com chave nenhuma abaixo da campanha.
+-- core.vw_utm_meta traduz os dois jeitos usando o proprio dicionario do Meta. Cobre 96,7%; o que
+-- nao resolve cai no valor cru de sempre.
+select b.created_at::date dia, b.canal, b.canal_aq, b.sistema, b.categoria,
+ nullif(b.campanha,'') campanha,
+ nullif(coalesce(uf.conjunto_real, b.adset),'')   conjunto,
+ nullif(coalesce(uf.anuncio_real,  b.anuncio),'') anuncio,
+ b.campanha_l,
+ coalesce(ul.conjunto_real, b.conjunto_l) conjunto_l,
+ coalesce(ul.anuncio_real,  b.anuncio_l)  anuncio_l,
+ count(*) pedidos, count(distinct b.kid) clientes, array_agg(distinct b.kid) ks,
+ round(sum(b.bruto)::numeric,2) bruto, round(sum(b.desconto)::numeric,2) desc_,
+ round(sum(b.reembolso)::numeric,2) reemb, round(sum(b.liquido)::numeric,2) liq,
+ round(sum(b.cmv)::numeric,2) cmv, round(sum(b.margem)::numeric,2) marg,
+ sum((b.cmv_ok)::int) cmv_ok,
+ sum((coalesce(b.basis,'session') in ('session','landing'))::int) med,
+ sum((b.basis='inherited')::int) inf
+from b
+left join core.vw_utm_meta uf on uf.campanha = b.campanha
+ and uf.content is not distinct from b.adset      and uf.term is not distinct from b.anuncio
+left join core.vw_utm_meta ul on ul.campanha = b.campanha_l
+ and ul.content is not distinct from b.conjunto_l and ul.term is not distinct from b.anuncio_l
+group by 1,2,3,4,5,6,7,8,9,10,11`,
   // SINTESE = ATRIBUICAO LINEAR. Mesmo formato de `dias`, mas cada pedido ja entra RATEADO pela
   // jornada: 10 sessoes -> 10% para cada toque, 3 sessoes -> 33%. Quem nao tem jornada
   // reconstruivel (33% do faturamento: `inherited`, woo legado, cliente que voltou sem passar no
@@ -115,18 +131,27 @@ from b group by 1,2,3,4,5,6,7,8,9,10,11`,
      from core.vw_app_pedido p
      left join core.vw_atribuicao_linear al on al.order_id = p.order_id
     where p.created_at >= '2025-01-01')
- select created_at::date dia, canal, canal canal_aq, sistema, categoria,
-   campanha, conjunto, anuncio,
-   campanha campanha_l, conjunto conjunto_l, anuncio anuncio_l,
-   round(sum(peso)::numeric,4) pedidos,
-   count(distinct kid) clientes, array_agg(distinct kid) ks,
-   round(sum(bruto*peso)::numeric,2) bruto, round(sum(desconto*peso)::numeric,2) desc_,
-   round(sum(reembolso*peso)::numeric,2) reemb, round(sum(liquido*peso)::numeric,2) liq,
-   round(sum(cmv*peso)::numeric,2) cmv, round(sum(margem*peso)::numeric,2) marg,
-   round(sum((cmv_ok)::int*peso)::numeric,2) cmv_ok,
-   round(sum((coalesce(basis,'session') in ('session','landing'))::int*peso)::numeric,2) med,
-   round(sum((basis='inherited')::int*peso)::numeric,2) inf
- from w group by 1,2,3,4,5,6,7,8`,
+ -- MESMA traducao de nivel da query dias. O modelo Sintese le daqui, entao sem isto a arvore
+ -- ficava resolvida no First/Last click e torta no modelo padrao — que e o que a tela abre.
+ select w.created_at::date dia, w.canal, w.canal canal_aq, w.sistema, w.categoria,
+   w.campanha,
+   coalesce(u.conjunto_real, w.conjunto) conjunto,
+   coalesce(u.anuncio_real,  w.anuncio)  anuncio,
+   w.campanha campanha_l,
+   coalesce(u.conjunto_real, w.conjunto) conjunto_l,
+   coalesce(u.anuncio_real,  w.anuncio)  anuncio_l,
+   round(sum(w.peso)::numeric,4) pedidos,
+   count(distinct w.kid) clientes, array_agg(distinct w.kid) ks,
+   round(sum(w.bruto*w.peso)::numeric,2) bruto, round(sum(w.desconto*w.peso)::numeric,2) desc_,
+   round(sum(w.reembolso*w.peso)::numeric,2) reemb, round(sum(w.liquido*w.peso)::numeric,2) liq,
+   round(sum(w.cmv*w.peso)::numeric,2) cmv, round(sum(w.margem*w.peso)::numeric,2) marg,
+   round(sum((w.cmv_ok)::int*w.peso)::numeric,2) cmv_ok,
+   round(sum((coalesce(w.basis,'session') in ('session','landing'))::int*w.peso)::numeric,2) med,
+   round(sum((w.basis='inherited')::int*w.peso)::numeric,2) inf
+ from w
+ left join core.vw_utm_meta u on u.campanha = w.campanha
+  and u.content is not distinct from w.conjunto and u.term is not distinct from w.anuncio
+ group by 1,2,3,4,5,6,7,8`,
   // SESSOES e VISITANTES NOVOS por (dia, canal, campanha, conjunto, anuncio) — o que faltava para
   // igualar Sessions / NV / Cost NV do Triple Whale. `nv` = sessao que E a primeira do user_id na
   // base: e o proxy padrao de visitante novo, e como o user_id e por aparelho, quem volta de outro
@@ -144,10 +169,16 @@ from b group by 1,2,3,4,5,6,7,8,9,10,11`,
     left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
    where w.timestamp >= '2026-01-01' group by 1),
   prim as (select user_id, min(ts) primeira from s where user_id is not null group by 1)
- select s.ts::date dia, s.canal, s.campanha, s.conjunto, s.anuncio,
+ -- mesma traducao de nivel da query dias: sem ela Sessions/NV se penduram numa chave que a arvore
+ -- (ja resolvida) nao tem mais, e a coluna zera justo nas campanhas de convencao torta.
+ select s.ts::date dia, s.canal, s.campanha,
+   coalesce(u.conjunto_real, s.conjunto) conjunto,
+   coalesce(u.anuncio_real,  s.anuncio)  anuncio,
    count(*) sessoes,
    count(*) filter (where p.primeira is not null and s.ts = p.primeira) nv
  from s left join prim p on p.user_id = s.user_id
+ left join core.vw_utm_meta u on u.campanha = s.campanha
+  and u.content is not distinct from s.conjunto and u.term is not distinct from s.anuncio
  group by 1,2,3,4,5`,
   // OBJETIVO REAL do Meta, que ja vinha coletado em ads.meta_ads_raw e eu nao usava. Separa topo de
   // funil de conversao SEM ninguem rotular nada. (Nao resolve "amostra x venda": para o Meta as duas
