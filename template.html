@@ -252,6 +252,28 @@ const jf=j=>j?[j[0],(j[1]>FECHADO?FECHADO:j[1])]:j;
 const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(MAX)} ainda não fechou.</b>
  O coletor de gasto do Meta vai até ${DT(FECHADO)}, então ${MAX===FECHADO?'':`o dia ${DT(MAX)} tem pedido e não tem gasto`}.
  ${o||'As métricas de custo desta tela param em '+DT(FECHADO)+' — senão o CPA sai barato por falta de denominador.'}</div>`:'';
+// COBERTURA DE CADA CONJUNTO DE DADO. Medida do proprio payload, nao chumbada: se a janela da
+// query mudar, o aviso acompanha sozinho.
+const COB=(arr,c)=>{const v=(arr||[]).map(r=>String(r[c]||'').slice(0,10)).filter(Boolean).sort();
+  return v.length?v[0]:null};
+const COBERTURA={gasto:COB(D.grid,'dia'), sessao:COB(D.sess,'dia')};
+const avisoCobertura=()=>{
+  const j=jan(); const ini=String((j||[])[0]||'').slice(0,10); if(!ini)return '';
+  const faltam=Object.entries(COBERTURA).filter(([,d])=>d&&ini<d)
+    .map(([k,d])=>({gasto:'gasto por campanha',sessao:'sessões e visitantes novos'}[k]+' começa em '+DT(d)));
+  return faltam.length?`<div class="al c"><b>O período escolhido começa antes do dado.</b>
+   ${faltam.join(' · ')}. Antes disso a coluna fica vazia — <b>não é zero, é ausência</b>, e o
+   ROAS/CAC das linhas nessa faixa sai otimista por falta de denominador.</div>`:''};
+// SAUDE DAS PIPELINES, visivel. A view existia e so aparecia numa tela sem rota — alarme que
+// ninguem ve nao e alarme. Foi assim que 2 dias do Meta e 2 meses de custo manual passaram batido.
+const avisoSaude=()=>{
+  const ruins=(D.saude||[]).filter(p=>p.status!=='OK');
+  if(!ruins.length)return '';
+  const li=ruins.map(p=>`<b>${p.fonte}</b> — ${p.status==='FURO'
+     ? (+p.dias_faltando===1?'mês anterior ao atual':(p.dias_faltando+' dia(s) sem nenhuma linha nos últimos 30'))
+     : 'sem atualizar há '+nf(+p.idade_horas,0)+'h (SLA '+p.sla_horas+'h)'}`).join('<br>');
+  return `<div class="al c"><b>Fonte de dado com problema.</b><br>${li}<br>
+   <span style="color:var(--t2)">Enquanto isso não for resolvido, gasto e ROAS estão subestimados nas datas afetadas.</span></div>`};
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
@@ -1383,7 +1405,7 @@ function pgCanais(){
      é (2,58 → 3,88 sessões por pedido). Ainda assim são <b>1,20 canais distintos por pedido</b>:
      na maioria dos casos este modelo entrega o mesmo que o first click, e a diferença aparece nos
      16% de pedidos multicanal.</span></div>`;
- return `${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
+ return `${avisoSaude()}${avisoCobertura()}${avisoBalde()}${avMod}${avisoAberto('O gasto vai até '+DT(FECHADO)+'.')}
  <div class="sc"><div class="sch"><div><h2>Canais e campanhas</h2>
   <p>Abre <b>canal → campanha → conjunto → anúncio</b>, para <b>todos</b> os canais.
   Faturamento, compras, clientes e margem vêm sempre do pedido atribuído — por isso filho sempre

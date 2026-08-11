@@ -32,7 +32,7 @@ module.exports = {
      from web.sessions w
      left join core.fonte_canonica fc on fc.fonte_bruta = w.source_norm
  ), b as (
- select p.created_at, p.canal, p.canal_aq, p.sistema, p.categoria,
+ select p.dia, p.canal, p.canal_aq, p.sistema, p.categoria,
         -- SE A SESSAO EXISTE, ELA MANDA — inclusive quando esta vazia. Cair de volta no bridge
         -- quando a sessao vem vazia foi o que reintroduziu o Frankenstein: 4 pedidos com sessao de
         -- origem SEM campanha nenhuma apareciam com '2026_06_VENDAS' pendurado embaixo de 'direct'.
@@ -96,7 +96,7 @@ module.exports = {
 -- grid (que vem na hierarquia certa do Meta) nao casava com chave nenhuma abaixo da campanha.
 -- core.vw_utm_meta traduz os dois jeitos usando o proprio dicionario do Meta. Cobre 96,7%; o que
 -- nao resolve cai no valor cru de sempre.
-select b.created_at::date dia, b.canal, b.canal_aq, b.sistema, b.categoria,
+select b.dia, b.canal, b.canal_aq, b.sistema, b.categoria,
  nullif(b.campanha,'') campanha,
  nullif(coalesce(uf.conjunto_real, b.adset),'')   conjunto,
  nullif(coalesce(uf.anuncio_real,  b.anuncio),'') anuncio,
@@ -122,7 +122,7 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
   // site) cai no canal de AQUISICAO com peso 1 — sem isso um terco da receita viraria "nao sei".
   // Regra e medicoes em cells-infra/fixes/2026-08-09-vw-atribuicao-linear.sql.
   dlin: `with w as (
-   select p.order_id, p.created_at, p.sistema, p.categoria,
+   select p.order_id, p.dia, p.sistema, p.categoria,
           p.bruto, p.desconto, p.reembolso, p.liquido, p.cmv, p.margem, p.cmv_ok, p.basis,
           coalesce(al.canal, p.canal_aq) canal,
           al.campanha, al.conjunto, al.anuncio,
@@ -133,7 +133,7 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
     where p.created_at >= '2025-01-01')
  -- MESMA traducao de nivel da query dias. O modelo Sintese le daqui, entao sem isto a arvore
  -- ficava resolvida no First/Last click e torta no modelo padrao — que e o que a tela abre.
- select w.created_at::date dia, w.canal, w.canal canal_aq, w.sistema, w.categoria,
+ select w.dia, w.canal, w.canal canal_aq, w.sistema, w.categoria,
    w.campanha,
    coalesce(u.conjunto_real, w.conjunto) conjunto,
    coalesce(u.anuncio_real,  w.anuncio)  anuncio,
@@ -239,7 +239,7 @@ union all select 'voltou_apos_falha', count(*)::int, 0 from mens a
   where not exists(select 1 from mens b where b.k=a.k and b.mes=a.mes+interval '1 month')
     and exists(select 1 from mens c where c.k=a.k and c.mes>a.mes+interval '1 month')`,
   spend: `select dia,fonte,round(sum(custo)::numeric,2) custo,max(origem_do_custo) origem from core.vw_mvp_custo_dia where dia>='2026-01-01' group by 1,2`,
-  saude: `select fonte,tipo,sla_horas,idade_horas,status,linhas from core.vw_pipeline_saude`,
+  saude: `select fonte,tipo,sla_horas,idade_horas,dias_faltando,status,linhas from core.vw_pipeline_saude`,
   fontes: `select fonte_bruta,canal,subcanal,pago from core.fonte_canonica`,
   pcusto: `select sku,descricao,tipo_produto,custo_unitario,confianca from commerce.produto_custo`,
   params: `select chave,valor,unidade,observacao from commerce.parametros_financeiros`,
@@ -296,5 +296,5 @@ from core.vw_payback_coorte order by mes, canal`,
   grid: `select dia, canal, campanha, conjunto, coalesce(anuncio,'(sem anuncio)') anuncio,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,
    plat_compras, pedidos, nc_pedidos, receita, nc_receita, conta, margem, nc_margem
-  from core.vw_ads_metricas_dia where dia >= current_date - 60 order by dia`,
+  from core.vw_ads_metricas_dia where dia >= '2026-01-01' order by dia`,
 };
