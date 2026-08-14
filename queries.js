@@ -96,11 +96,13 @@ module.exports = {
 -- grid (que vem na hierarquia certa do Meta) nao casava com chave nenhuma abaixo da campanha.
 -- core.vw_utm_meta traduz os dois jeitos usando o proprio dicionario do Meta. Cobre 96,7%; o que
 -- nao resolve cai no valor cru de sempre.
+-- campanha_real (13/08): quando a UTM trouxe o ID numerico no lugar do nome ({{campaign.id}},
+-- jul/26), a receita abria uma linha "120245..." sem gasto. O coalesce funde com a linha do nome.
 select b.dia, b.canal, b.canal_aq, b.sistema, b.categoria,
- nullif(b.campanha,'') campanha,
+ nullif(coalesce(uf.campanha_real, b.campanha),'') campanha,
  nullif(coalesce(uf.conjunto_real, b.adset),'')   conjunto,
  nullif(coalesce(uf.anuncio_real,  b.anuncio),'') anuncio,
- b.campanha_l,
+ coalesce(ul.campanha_real, b.campanha_l) campanha_l,
  coalesce(ul.conjunto_real, b.conjunto_l) conjunto_l,
  coalesce(ul.anuncio_real,  b.anuncio_l)  anuncio_l,
  count(*) pedidos, count(distinct b.kid) clientes, array_agg(distinct b.kid) ks,
@@ -134,10 +136,10 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
  -- MESMA traducao de nivel da query dias. O modelo Sintese le daqui, entao sem isto a arvore
  -- ficava resolvida no First/Last click e torta no modelo padrao — que e o que a tela abre.
  select w.dia, w.canal, w.canal canal_aq, w.sistema, w.categoria,
-   w.campanha,
+   coalesce(u.campanha_real, w.campanha) campanha,
    coalesce(u.conjunto_real, w.conjunto) conjunto,
    coalesce(u.anuncio_real,  w.anuncio)  anuncio,
-   w.campanha campanha_l,
+   coalesce(u.campanha_real, w.campanha) campanha_l,
    coalesce(u.conjunto_real, w.conjunto) conjunto_l,
    coalesce(u.anuncio_real,  w.anuncio)  anuncio_l,
    round(sum(w.peso)::numeric,4) pedidos,
@@ -171,7 +173,7 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
   prim as (select user_id, min(ts) primeira from s where user_id is not null group by 1)
  -- mesma traducao de nivel da query dias: sem ela Sessions/NV se penduram numa chave que a arvore
  -- (ja resolvida) nao tem mais, e a coluna zera justo nas campanhas de convencao torta.
- select s.ts::date dia, s.canal, s.campanha,
+ select s.ts::date dia, s.canal, coalesce(u.campanha_real, s.campanha) campanha,
    coalesce(u.conjunto_real, s.conjunto) conjunto,
    coalesce(u.anuncio_real,  s.anuncio)  anuncio,
    count(*) sessoes,
