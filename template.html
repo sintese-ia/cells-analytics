@@ -296,13 +296,23 @@ function jan(){
   case 'custom':return[S.d1||MIN,S.d2||f];
   default:return[addD(f,-29),f]}
 }
+// mesAnt: mesma janela um mes antes, com o dia final travado no ultimo dia do mes de destino
+// (sem o clamp, 31/07 - 1 mes estoura para 01/07 via 31/06). E a regra MESPARC aplicada ao "vs".
+function mesAnt(i,f){
+ const a=new Date(i+'T12:00:00');a.setDate(1);a.setMonth(a.getMonth()-1);
+ const ult=new Date(a.getFullYear(),a.getMonth()+1,0).getDate();
+ const p=a.toISOString().slice(0,8), corte=d=>p+String(Math.min(+d,ult)).padStart(2,'0');
+ return[corte(i.slice(8,10)),corte(f.slice(8,10))];
+}
 function janC(j){
  const [i,f]=j, n=(new Date(f+'T12:00:00')-new Date(i+'T12:00:00'))/864e5+1;
  if(S.cmp==='none')return null;
- if(S.cmp==='mesant'){const a=new Date(i+'T12:00:00'),b=new Date(f+'T12:00:00');
-  a.setMonth(a.getMonth()-1);b.setMonth(b.getMonth()-1);
-  return[a.toISOString().slice(0,10),b.toISOString().slice(0,10)]}
+ if(S.cmp==='mesant')return mesAnt(i,f);
  if(S.cmp==='anoant'){return[(+i.slice(0,4)-1)+i.slice(4),(+f.slice(0,4)-1)+f.slice(4)]}
+ // Mes (parcial ou fechado) nunca compara com "os N dias anteriores": isso poe o comeco de um
+ // mes contra o fim do outro, e renovacao de assinatura concentra no fim (18/08/2026: o balde
+ // MRR mostrou -42% comparando 01-18/08 com 14-31/07; mes contra mes cortado no dia era -34%).
+ if(S.per==='mes'||S.per==='mesant')return mesAnt(i,f);
  return[addD(i,-n),addD(i,-1)];
 }
 const inP=(x,j)=>j&&x>=j[0]&&x<=j[1];
