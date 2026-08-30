@@ -668,13 +668,20 @@ function pgAquisicao(){
  const mes=mesCorrente();
  const OP=o=>o?o.r_novo_avulso+o.r_novo_assinatura+o.r_antigo_avulso+o.r_antigo_inicio_assinatura:null;
  const NOV=o=>o?o.p_novo_avulso+o.p_novo_assinatura:null;
+ const NR=o=>o?o.r_novo_avulso+o.r_novo_assinatura:null;
  const cacA=dv(A.spend,NOV(A)), cacB=B?dv(B.spend,NOV(B)):null;
 
- const conta=`<div class="gr g6">
-  ${cdS('Faturamento da conta',R0(OP(A)),`${dlOk(OP(A),OP(B))} vs período anterior`)}
-  ${cdS('ROAS da conta',RT(dv(OP(A),A.spend)),`${dlOk(dv(OP(A),A.spend),B?dv(OP(B),B.spend):null)} · meta do mês ${RT(mes.roas_compras_meta)}`)}
-  ${cdS('CAC dos novos',R0(cacA),`${dlRuim(cacA,cacB)} · ${IN(NOV(A))} novos · meta do mês ${R0(mes.cac_meta)}`)}
+ // MANCHETE = NOVOS (formato do Gabriel, 30/08). Aquisicao e sobre comprar cliente novo;
+ // a conta inteira (com recompra e assinantes) vira rodape da tela.
+ const novos=`<div class="gr g6">
+  ${cdS('Faturamento — novos',R0(NR(A)),`${dlOk(NR(A),NR(B))} vs período anterior · ${IN(NOV(A))} clientes novos`)}
+  ${cdS('ROAS novos',RT(dv(NR(A),A.spend)),`${dlOk(dv(NR(A),A.spend),B?dv(NR(B),B.spend):null)} · receita de novos ÷ gasto · meta do mês ${RT(mes.roas_novos_meta)}`)}
+  ${cdS('CAC novos',R0(cacA),`${dlRuim(cacA,cacB)} · gasto ÷ todos os novos · meta do mês ${R0(mes.cac_meta)}`)}
   ${cdS('Investido',R0(A.spend),`${dlOk(A.spend,B?B.spend:null)} vs período anterior`)}
+ </div>`;
+ const conta=`<div class="gr g6">
+  ${cdS('Faturamento da conta',R0(OP(A)),`${dlOk(OP(A),OP(B))} · novos + recompra + novos assinantes`)}
+  ${cdS('ROAS da conta',RT(dv(OP(A),A.spend)),`${dlOk(dv(OP(A),A.spend),B?dv(OP(B),B.spend):null)} · meta do mês ${RT(mes.roas_compras_meta)}`)}
  </div>`;
 
  const linhasSem = SM.slice().reverse().slice(0,14).map(w=>{
@@ -703,39 +710,54 @@ function pgAquisicao(){
  const novG=o=>o.p_novo_avulso+o.p_novo_assinatura;
  const totNov=novG(G.pago)+novG(G.organico);
  const pctNP=dv(novG(G.organico),totNov);
- const linhaG=(n,o,pago)=>`<tr><td class="l">${n}</td>
+ // ORIGEM DETALHADA (30/08): o grupo abre nos canais que o compoem — "não-pago 31" sem dizer
+ // QUAIS canais nao guia decisao nenhuma.
+ const linhaO=(n,o,pago,sub)=>`<tr class="${sub?'sub':'tot'}"><td class="l fx">${n}</td>
    <td>${IN(novG(o))}</td><td>${PC(dv(novG(o),totNov)*100)}</td>
    <td>${R0(o.r_novo_avulso+o.r_novo_assinatura)}</td>
-   <td>${pago?R0(o.spend):'<span class="na">—</span>'}</td>
-   <td>${pago?R$(dv(o.spend,novG(o))):'<span class="pl m">R$ 0</span>'}</td>
+   <td>${R$(dv(o.r_novo_avulso+o.r_novo_assinatura,novG(o)))}</td>
+   <td>${o.spend>0?R0(o.spend):'<span class="na">—</span>'}</td>
+   <td>${o.spend>0?R$(dv(o.spend,novG(o))):(pago?'<span class="na">sem gasto</span>':'<span class="pl m">R$ 0</span>')}</td>
    <td>${IN(o.p_novo_assinatura)}</td></tr>`;
+ const canaisDe=pago=>Object.values(A3.can)
+   .filter(c=>ehPago(c.canal)===!!pago&&(novG(c)>0||c.r_novo_avulso+c.r_novo_assinatura>0))
+   .sort((a,b)=>novG(b)-novG(a))
+   .map(c=>linhaO(c.canal,c,pago,1)).join('');
+ const origemTb=`<div class="tw"><table><thead><tr><th class="l fx">Origem</th><th>Novos</th><th>% dos novos</th>
+   <th>Receita de novos</th><th>Ticket 1ª compra</th><th>Gasto</th><th>CAC</th><th>Assinaram direto</th></tr></thead>
+   <tbody>${linhaO('MÍDIA PAGA',G.pago,1)}${canaisDe(1)}
+   ${linhaO('NÃO-PAGO',G.organico,0)}${canaisDe(0)}</tbody></table></div>`;
  const tesePagoNP=`<div class="sc"><div class="sch"><div><h2>De onde vêm os novos — pago × não-pago</h2>
   <p>Período do seletor (${DT(jp[0])} a ${DT(jp[1])}), atribuição de aquisição. A tese do negócio é
-  <b>atenção barata</b>: essa fatia verde precisa crescer para as metas fecharem sem estourar o orçamento.</p></div></div>
+  <b>atenção barata</b>: essa fatia precisa crescer para as metas fecharem sem estourar o orçamento.</p></div></div>
   <div class="gr g6">
    ${cdS('% novos de canal não-pago',PC((pctNP||0)*100),`${IN(novG(G.organico))} de ${IN(totNov)} novos clientes`)}
    ${cdS('% assinatura direta',PC((dv(A3.p_novo_assinatura,A3.p_novo_avulso+A3.p_novo_assinatura)||0)*100),'novos que já entram assinando')}
    ${cdS('Ticket da 1ª compra',R$(dv(A3.r_novo_avulso+A3.r_novo_assinatura,A3.p_novo_avulso+A3.p_novo_assinatura)),'receita de novos ÷ novos')}
   </div>
-  <div class="tw"><table><thead><tr><th class="l">Origem</th><th>Novos</th><th>% dos novos</th>
-   <th>Receita de novos</th><th>Gasto</th><th>CAC</th><th>Assinaram direto</th></tr></thead>
-   <tbody>${linhaG('Mídia paga',G.pago,1)}${linhaG('Não-pago (orgânico, direto, indicação, IA…)',G.organico,0)}</tbody></table></div>
+  ${origemTb}
   <div class="al w" style="margin-top:8px"><b>“Não-pago” aqui é ausência de mídia comprada, não custo zero de verdade</b> —
    conteúdo, creator e parceria custam tempo e produto. E parte do não-atribuído pode ser eco da
-   própria mídia paga (viu anúncio, entrou digitando). Leia como direção, não como fronteira exata.</div></div>`;
+   própria mídia paga (viu anúncio, entrou digitando). Canal pago <b>sem gasto registrado</b> (ex.:
+   google_ads) tem CAC indeterminado, não bom. O detalhe campanha → conjunto → anúncio mora em
+   <b>Canais e campanhas</b>.</div></div>`;
 
- return `${avisoAberto('A conta abaixo fecha em '+DT(FECHADO)+' — o dia aberto ainda não tem o gasto coletado, então o período é cortado ali.')}
- <div class="sc"><div class="sch"><div><h2>A conta — ${DT(j[0])} a ${DT(j[1])}</h2>
+ return `${avisoAberto('As métricas de custo abaixo fecham em '+DT(FECHADO)+' — o dia aberto ainda não tem o gasto coletado, então o período é cortado ali.')}
+ <div class="sc"><div class="sch"><div><h2>Novos — ${DT(j[0])} a ${DT(j[1])}</h2>
   <p>Obedece o seletor de período (cortado no último dia com gasto fechado), canal e atribuição.
-  A conta é <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.
-  Balde e tipo de cliente não se aplicam aqui — a conta tem definição fixa.</p></div></div>
-  ${conta}</div>
+  Novo = primeira compra paga (única ou assinatura); amostra nunca conta.
+  Balde e tipo de cliente não se aplicam — a definição é fixa.</p></div></div>
+  ${novos}</div>
  ${tesePagoNP}
  <div class="sc"><div class="sch"><div><h2>Semana a semana</h2>
   <p>A ação lê a janela de 4 semanas, nunca a semana isolada.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Semana</th><th>Conta</th><th>Meta</th><th>%</th>
    <th>Novos</th><th>Investido</th><th>CAC 4s</th><th>ROAS 4s</th><th>Ação</th></tr></thead>
-   <tbody>${linhasSem||'<tr><td colspan="9" class="l">Sem semanas no período.</td></tr>'}</tbody></table></div></div>`;
+   <tbody>${linhasSem||'<tr><td colspan="9" class="l">Sem semanas no período.</td></tr>'}</tbody></table></div></div>
+ <div class="sc"><div class="sch"><div><h2>A conta inteira — referência</h2>
+  <p>Novos + recompra + novos assinantes, no mesmo período. A composição completa está em <b>Resultado</b>.</p></div>
+  <button class="bt" data-go="resultado">Ver Resultado →</button></div>
+  ${conta}</div>`;
 }
 /* ==================== VISÃO GERAL — a árvore de KPIs, no mês corrente ==================== */
 // Uma tela = a arvore inteira (30/08/2026). Cada bloco e uma PERGUNTA com 3-4 numeros e um link
