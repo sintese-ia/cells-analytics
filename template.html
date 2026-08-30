@@ -882,12 +882,14 @@ function pgBase(){
    <td>${IN(r.esperados)}</td><td>${IN(r.renovaram)}</td>
    <td style="color:${p>=.8?'var(--vd)':p>=.6?'var(--lj)':'var(--vm)'};font-weight:650">${PC((p||0)*100)}</td>
    <td>${IN(r.falha_pagamento)}</td><td>${IN(r.cancelou)}</td><td>${IN(r.pausou)}</td>
+   <td style="color:var(--vd)">${IN(r.reagendado)}</td>
    <td>${IN(r.ciclo_longo)}</td><td>${IN(r.sem_info)}</td><td>${R0(+r.valor_sumiu)}</td></tr>`}).join('');
  // detalhe nominal da transicao mais recente exibivel
  const ult=cic[cic.length-1];
- const CHIP={cancelado:'r',pausado:'g',cartao_revogado:'i',cartao_recusado:'i',plano_45d:'g',sem_info:'g'};
+ const CHIP={cancelado:'r',pausado:'g',cartao_revogado:'i',cartao_recusado:'i',plano_45d:'g',sem_info:'g',reagendado:'m'};
  const NOME={cancelado:'cancelou',pausado:'pausou',cartao_revogado:'falha — cartão revogado',
-  cartao_recusado:'falha — cartão recusado',plano_45d:'ciclo de 45d',sem_info:'sem info'};
+  cartao_recusado:'falha — cartão recusado',plano_45d:'ciclo de 45d',sem_info:'sem info',
+  reagendado:'reagendado — renova depois'};
  const det=(D.assinSumiu||[]).filter(r=>ult&&String(r.mes).slice(0,10)===ult.mes)
   .map(r=>`<tr><td class="l">${r.email}</td>
    <td class="l"><span class="pl ${CHIP[r.status]||'g'}">${NOME[r.status]||r.status}</span></td>
@@ -900,11 +902,13 @@ function pgBase(){
  return `<div class="sc"><div class="gr g6">${['renov','rrec','pcrec','antc','txant'].map(k=>CD(k,A,B)).join('')}</div></div>
  <div class="sc"><div class="sch"><div><h2>O que aconteceu com as assinaturas — ciclo a ciclo</h2>
   <p>Quem pagou assinatura num mês era esperado no seguinte. <b>Renovou, falhou o pagamento,
-  cancelou ou pausou?</b> O que a auditoria manual não cobre aparece como <b>sem info</b> — esse é o
-  tamanho do buraco do Appstle, e escondê-lo seria mentir.</p></div></div>
+  cancelou, pausou — ou só reagendou?</b> Status cruzado de Appstle (snapshot 30/08), Stripe e
+  auditoria manual. <b>Reagendado renova no mês seguinte: não é churn.</b></p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Ciclo</th><th>Esperados</th><th>Renovaram</th><th>%</th>
-   <th>Falha pgto</th><th>Cancelou</th><th>Pausou</th><th>Ciclo 45d</th><th>Sem info</th><th>R$ que sumiu</th></tr></thead>
-   <tbody>${linhas||'<tr><td colspan="10" class="emp">Sem dados de ciclo.</td></tr>'}</tbody></table></div></div>
+   <th>Falha pgto</th><th>Cancelou</th><th>Pausou</th>
+   <th title="Assinatura ativa com próxima cobrança 2+ meses à frente — NÃO é churn, renova depois">Reagendado</th>
+   <th>Ciclo 45d</th><th>Sem info</th><th title="Exclui reagendado — dinheiro que renova depois não sumiu">R$ que sumiu</th></tr></thead>
+   <tbody>${linhas||'<tr><td colspan="11" class="emp">Sem dados de ciclo.</td></tr>'}</tbody></table></div></div>
  ${ult?`<div class="sc"><div class="sch"><div><h2>Quem sumiu no ciclo ${MS[+ult.mes.slice(5,7)-1]} → ${MS[(+ult.mes.slice(5,7))%12]}${ult.emCurso?' (em curso)':''}</h2>
   <p>Nominal, para agir: recuperar cartão, perguntar o motivo, reativar pausa.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">E-mail</th><th class="l">O que houve</th>
@@ -928,10 +932,12 @@ function pgBase(){
   <p>Mediana, não média — a distribuição tem cauda longa. Diz QUANDO agir em quem não recomprou.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Etapa</th><th>Deram o passo</th><th>Não deram</th>
    <th>Mediana</th><th>P25–P75</th></tr></thead><tbody>${tempos||'<tr><td colspan="5" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
- <div class="sc"><div class="al w"><b>O status de quem sumiu vem de auditoria manual</b>
-  (<code>core.assinatura_status_manual</code>, 19/08) — a API do Appstle está bloqueada pelo plano.
-  Enquanto a fonte automática não existir, o balde “sem info” é o KPI mais importante desta tela:
-  cada linha resolvida ali vira falha recuperável ou churn de verdade.</div>
+ <div class="sc"><div class="al o"><b>O status de quem sumiu vem de três fontes</b>: snapshot do
+  Appstle (export de 30/08 em <code>crm.appstle_subscription</code> — cancelamento e pausa com data),
+  Stripe (cartão recusado/revogado) e auditoria manual. <b>Reagendado não é churn</b>: assinatura
+  ativa cuja próxima cobrança pula pro mês seguinte. O “sem info” restante é quase todo Woo legado
+  (CellsClub), que não existe no Appstle. O snapshot é manual — re-exportar do Appstle quando o
+  número parecer velho.</div>
   ${jr.falha?`<div class="al c"><b>${IN(jr.falha.n)} cobranças do CellsClub (Woo) falharam</b> — ${R0(jr.falha.v)} não cobrados.
    ${IN(jr.voltou_apos_falha?.n)} assinantes que pularam um mês voltaram a pagar depois — falha de cartão se recupera, cancelamento não.</div>`:''}</div>`;
 }

@@ -293,7 +293,7 @@ from core.vw_payback_coorte order by mes, canal`,
   // Status de quem sumiu vem de core.assinatura_status_manual (auditoria de 19/08, 9 e-mails);
   // o resto é 'sem_info' de propósito: o painel mostra o tamanho do buraco do Appstle.
   assinCiclo: `select mes, esperados, renovaram, cancelou, pausou, falha_pagamento,
-   ciclo_longo, sem_info, valor_sumiu from core.vw_assinatura_ciclo order by mes`,
+   ciclo_longo, sem_info, valor_sumiu, reagendado from core.vw_assinatura_ciclo order by mes`,
   assinSumiu: `select mes, email, status, detalhe, valor_mes, ultima_cobranca
   from core.vw_assinatura_sumiu
  where mes >= date_trunc('month', now()) - interval '3 months' order by mes desc, status, email`,
