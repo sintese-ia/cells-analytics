@@ -655,22 +655,26 @@ function cicloLinhas(){
 // FORA do ROAS e do CAC. A novidade de 30/08: a quebra PAGO x NAO-PAGO — o gargalo declarado do
 // negocio e atencao barata, entao a fatia de novos sem midia paga e a metrica da tese.
 function pgAquisicao(){
- const J=D.k7||[];
- if(!J.length) return `<div class="emp">Sem dado de janela de 7 dias. Confira <code>core.vw_kpi_7d</code>.</div>`;
- const j=janela7Fechada(), SM=D.ksem||[];
+ const SM=D.ksem||[];
+ // A CONTA NO PERIODO DO SELETOR (pedido do Gabriel, 30/08: "não ser preso no semanal").
+ // Custo so existe ate FECHADO, entao a janela inteira e cortada ali — numerador e denominador
+ // sempre na mesma janela, senao CAC e ROAS saem baratos por falta de gasto do dia aberto.
+ // Balde e tipo de cliente NAO se aplicam aqui (a conta tem definicao fixa); canal, grupo e
+ // modelo de atribuicao sim.
+ const j=jf(jan()), jc=janC(j);
+ const _b=S.bal,_c=S.cat; S.bal='';S.cat='';
+ const A=agg(j), B=jc?agg(jc):null;
+ S.bal=_b;S.cat=_c;
+ const mes=mesCorrente();
+ const OP=o=>o?o.r_novo_avulso+o.r_novo_assinatura+o.r_antigo_avulso+o.r_antigo_inicio_assinatura:null;
+ const NOV=o=>o?o.p_novo_avulso+o.p_novo_assinatura:null;
+ const cacA=dv(A.spend,NOV(A)), cacB=B?dv(B.spend,NOV(B)):null;
 
  const conta=`<div class="gr g6">
-  ${cdS('Faturamento da conta',R0(j.fat_op),`${dlOk(j.fat_op,j.fat_op_ant)} vs 7 dias antes · meta ${R0(j.fat_op_meta_ritmo)} (${PC(j.pct_op_ritmo)})`)}
-  ${cdS('ROAS da conta',RT(j.roas_op),`${dlOk(j.roas_op,j.roas_op_ant)} · meta ${RT(j.roas_op_meta)}`)}
-  ${cdS('CAC dos novos',R0(j.cac_novos),`${dlRuim(j.cac_novos,j.cac_novos_ant)} · meta ${R0(j.cac_meta)}`)}
-  ${cdS('Investido',R0(j.custo_total),`${dlOk(j.custo_total,j.custo_total_ant)} · orçamento do ritmo ${R0(j.custo_meta_ritmo)}`)}
- </div>`;
- const blocos=`<div class="gr g6">
-  ${cdS('1 · Novos',R0(j.fat_novos),`${j.qtd_novos} clientes novos · meta ${RT(j.qtd_novos_meta_ritmo)}`)}
-  ${cdS('2 · Recompra (antigos)',R0(j.fat_recorrente),'cliente que já tinha comprado')}
-  ${cdS('3 · Novos assinantes',R0(j.novos_assinantes),'vira MRR no mês que vem')}
-  ${cdS('Fora · Amostra',R0(j.amostra),`${j.qtd_amostras} amostras · não é venda que a mídia paga`)}
-  ${cdS('Fora · MRR',R0(j.mrr),'renovação de assinante de mês anterior')}
+  ${cdS('Faturamento da conta',R0(OP(A)),`${dlOk(OP(A),OP(B))} vs período anterior`)}
+  ${cdS('ROAS da conta',RT(dv(OP(A),A.spend)),`${dlOk(dv(OP(A),A.spend),B?dv(OP(B),B.spend):null)} · meta do mês ${RT(mes.roas_compras_meta)}`)}
+  ${cdS('CAC dos novos',R0(cacA),`${dlRuim(cacA,cacB)} · ${IN(NOV(A))} novos · meta do mês ${R0(mes.cac_meta)}`)}
+  ${cdS('Investido',R0(A.spend),`${dlOk(A.spend,B?B.spend:null)} vs período anterior`)}
  </div>`;
 
  const linhasSem = SM.slice().reverse().slice(0,14).map(w=>{
@@ -688,9 +692,9 @@ function pgAquisicao(){
  // DE ONDE VEM OS NOVOS — pago x nao-pago, no periodo do seletor. Novos = novo_avulso +
  // novo_assinatura, pela atribuicao de aquisicao. CAC so existe no lado pago (o nao-pago nao tem
  // denominador — e o ponto: cliente que chega de graca).
- const jp=jan(), A=agg(jp,{canalView:true});
+ const jp=jan(), A3=agg(jp,{canalView:true});
  const G={pago:Object.assign(Z(),{spend:0}),organico:Object.assign(Z(),{spend:0})};
- for(const c of Object.values(A.can)){
+ for(const c of Object.values(A3.can)){
   const g=ehPago(c.canal)?G.pago:G.organico;
   for(const k in c)if(typeof c[k]==='number'&&k!=='cli')g[k]=(g[k]||0)+c[k];
   if(c.ks)for(const x of c.ks)g.ks.add(x);
@@ -710,8 +714,8 @@ function pgAquisicao(){
   <b>atenção barata</b>: essa fatia verde precisa crescer para as metas fecharem sem estourar o orçamento.</p></div></div>
   <div class="gr g6">
    ${cdS('% novos de canal não-pago',PC((pctNP||0)*100),`${IN(novG(G.organico))} de ${IN(totNov)} novos clientes`)}
-   ${cdS('% assinatura direta',PC((dv(A.p_novo_assinatura,A.p_novo_avulso+A.p_novo_assinatura)||0)*100),'novos que já entram assinando')}
-   ${cdS('Ticket da 1ª compra',R$(dv(A.r_novo_avulso+A.r_novo_assinatura,A.p_novo_avulso+A.p_novo_assinatura)),'receita de novos ÷ novos')}
+   ${cdS('% assinatura direta',PC((dv(A3.p_novo_assinatura,A3.p_novo_avulso+A3.p_novo_assinatura)||0)*100),'novos que já entram assinando')}
+   ${cdS('Ticket da 1ª compra',R$(dv(A3.r_novo_avulso+A3.r_novo_assinatura,A3.p_novo_avulso+A3.p_novo_assinatura)),'receita de novos ÷ novos')}
   </div>
   <div class="tw"><table><thead><tr><th class="l">Origem</th><th>Novos</th><th>% dos novos</th>
    <th>Receita de novos</th><th>Gasto</th><th>CAC</th><th>Assinaram direto</th></tr></thead>
@@ -720,13 +724,12 @@ function pgAquisicao(){
    conteúdo, creator e parceria custam tempo e produto. E parte do não-atribuído pode ser eco da
    própria mídia paga (viu anúncio, entrou digitando). Leia como direção, não como fronteira exata.</div></div>`;
 
- return `${avisoAberto('A conta abaixo fecha em '+DT(FECHADO)+' — a janela que inclui hoje ainda não tem o gasto do dia.')}
- <div class="sc"><div class="sch"><div><h2>A conta — 7 dias, ${DT(j.de).slice(0,5)} a ${DT(j.ate).slice(0,5)}</h2>
-  <p>Janela móvel: sempre 7 dias dos dois lados, sem o viés da semana pela metade. A conta é
-  <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.</p></div></div>
+ return `${avisoAberto('A conta abaixo fecha em '+DT(FECHADO)+' — o dia aberto ainda não tem o gasto coletado, então o período é cortado ali.')}
+ <div class="sc"><div class="sch"><div><h2>A conta — ${DT(j[0])} a ${DT(j[1])}</h2>
+  <p>Obedece o seletor de período (cortado no último dia com gasto fechado), canal e atribuição.
+  A conta é <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.
+  Balde e tipo de cliente não se aplicam aqui — a conta tem definição fixa.</p></div></div>
   ${conta}</div>
- <div class="sc"><div class="sch"><div><h2>Composição da conta</h2>
-  <p>Amostra e MRR aparecem, mas não entram no ROAS nem no CAC.</p></div></div>${blocos}</div>
  ${tesePagoNP}
  <div class="sc"><div class="sch"><div><h2>Semana a semana</h2>
   <p>A ação lê a janela de 4 semanas, nunca a semana isolada.</p></div></div>
@@ -822,7 +825,7 @@ function pgAmostras(){
  return `<div class="sc"><div class="gr g6">
    ${CD('amos',A,B)}
    ${cdS('Receita de amostra',R0(A.r_amostra),'entra no faturamento, nunca no CAC')}
-   ${cdS('Custo por amostra',R$(dv(spAm,qAm)),`conjuntos de amostra no período fechado (${IN(qAm)} amostras)`)}
+   ${cdS('CAC por amostra',R$(dv(spAm,qAm)),`gasto dos conjuntos de amostra ÷ amostras que entregaram (${IN(qAm)}) · período fechado`)}
    ${cdS('Conversão amostra → pagante',PC((conv||0)*100),'histórico completo')}
    ${cdS('Tempo até converter',t1?IN(t1.mediana_dias)+' dias':'—',t1?`mediana · P25 ${IN(t1.p25_dias)}d · P75 ${IN(t1.p75_dias)}d`:'')}
   </div></div>
@@ -837,7 +840,7 @@ function pgAmostras(){
  <div class="sc"><div class="sch"><div><h2>Amostras por mês</h2></div></div>
   <div class="tw"><table><thead><tr><th class="l">Mês</th><th>Amostras</th><th>Receita</th></tr></thead>
   <tbody>${tbl||'<tr><td colspan="3" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
- <div class="sc"><div class="al w"><b>Custo por amostra é métrica de conjunto, não de balde.</b> O mesmo
+ <div class="sc"><div class="al w"><b>CAC por amostra é métrica de conjunto, não de balde.</b> O mesmo
   conjunto entrega amostra e compra com um orçamento só — o número acima soma apenas conjuntos onde a
   amostra domina (amostras &gt; aquisições). O detalhe por conjunto está em <b>Canais e campanhas</b>,
   coluna <i>Cost/Sample</i>.</div></div>`;
@@ -995,6 +998,19 @@ function pgResultado(){
    <div class="v" style="color:${T.resultado>=0?'var(--ok)':'var(--er)'}">${R0(T.resultado)}</div>
    <div class="c f">a régua de quando o estoque acabar</div></div></div>`;
 
+ // COMPOSICAO DA CONTA (mudou de Aquisicao para ca em 30/08, pedido do Gabriel): e leitura de
+ // RESULTADO — de onde veio o dinheiro do periodo. Ignora balde/canal como o resto da tela.
+ const comp=(()=>{
+  const _b=S.bal,_c=S.cat,_cn=S.can,_g=S.gru; S.bal='';S.cat='';S.can='';S.gru='';
+  const A2=agg(j); S.bal=_b;S.cat=_c;S.can=_cn;S.gru=_g;
+  return `<div class="gr g6">
+   ${cdS('1 · Novos (compra única)',R0(A2.r_novo_avulso),`${IN(A2.p_novo_avulso)} pedidos`)}
+   ${cdS('2 · Recompra (antigos)',R0(A2.r_antigo_avulso),`${IN(A2.p_antigo_avulso)} pedidos · cliente que já tinha comprado`)}
+   ${cdS('3 · Novos assinantes',R0(A2.r_novo_assinatura+A2.r_antigo_inicio_assinatura),`${IN(A2.p_novo_assinatura+A2.p_antigo_inicio_assinatura)} assinaturas · vira MRR no mês que vem`)}
+   ${cdS('Fora · Amostra',R0(A2.r_amostra),`${IN(A2.p_amostra)} amostras · não é venda que a mídia paga`)}
+   ${cdS('Fora · MRR',R0(A2.r_recorrente),'renovação de assinante de mês anterior')}
+  </div>`})();
+
  const L=(n,v,sinal,forte,dica)=>`<tr${forte?' class="tot"':''}>
    <td class="l fx">${sinal||''} ${n}${dica?` <span class="t3" title="${dica}">ⓘ</span>`:''}</td>
    <td style="text-align:right${forte?';font-weight:700':''}${v<0&&forte?';color:var(--er)':''}">${R0(v)}</td>
@@ -1072,6 +1088,8 @@ function pgResultado(){
  ].join('');
 
  return `${cds}
+ <div class="sc"><div class="sch"><div><h2>Composição da conta</h2>
+  <p>De onde veio o dinheiro do período. Amostra e MRR aparecem, mas não entram no ROAS nem no CAC.</p></div></div>${comp}</div>
  <div class="sc"><div class="sch"><div><h2>Da venda ao resultado</h2>
   <p>Cada linha do período, e quanto ela pesa sobre o faturamento.</p></div></div>${cascata}</div>
  <div class="sc"><div class="sch"><div><h2>Mês a mês</h2></div></div>${serie}</div>
