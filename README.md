@@ -12,11 +12,20 @@ protegido por senha (checagem server-side — o HTML nao sai sem o cookie).
 | `CACHE_MIN` | `10` | minutos de cache das queries |
 | `PORT` | `3000` | |
 
+## Estrutura (30/08/2026 — arvore de KPIs)
+
+Cada tela e uma PERGUNTA do negocio: **Visao geral** (mes corrente + metas de
+`core.plano_mes`) · **Resultado** (o negocio se paga? DRE + caixa gerado) ·
+**Aquisicao** (a conta 7d + pago × nao-pago) · **Amostras** (o motor converte?) ·
+**Base e assinaturas** (o cliente fica? ciclo renovou/falhou/cancelou/pausou) ·
+**Jornada do site** (% CR e ticket por PDP) · **Canais e campanhas** (grid completo).
+
 ## Camada semantica
 
 Nao ha SQL de negocio aqui: as queries em `queries.js` leem as views de `core.*`
 (`vw_app_pedido`, `vw_margem_pedido`, `vw_ltv_coorte`, `vw_criativo_dia`,
-`vw_mvp_custo_dia`, `vw_pipeline_saude`, `fonte_canonica`, `produto_custo`).
+`vw_mvp_custo_dia`, `vw_pipeline_saude`, `vw_assinatura_ciclo`, `vw_assinatura_sumiu`,
+`vw_pdp_dia`, `vw_tempo_entre_etapas`, `fonte_canonica`, `produto_custo`).
 Definicao de metrica muda na view, nao no app.
 
 ## Comportamento em falha

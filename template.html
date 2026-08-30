@@ -138,7 +138,7 @@ input[type=search]{border:1px solid var(--ln);border-radius:4px;padding:6px 9px;
  </aside>
  <div class="mn">
   <div class="tp">
-   <div class="tp1"><h1 id="pt">Resumo</h1><span class="up" id="up"></span><span class="bd2" id="bd">DADO REAL · snapshot</span></div>
+   <div class="tp1"><h1 id="pt">Visão geral</h1><span class="up" id="up"></span><span class="bd2" id="bd">DADO REAL · snapshot</span></div>
    <div class="fl" id="flz"></div>
    <div class="fl" id="flx" style="margin-top:7px;display:none"></div>
   </div>
@@ -277,7 +277,7 @@ const avisoSaude=()=>{
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
-const S={pg:'resumo',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'rec',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',eixo:'pedido',rec:'liq',
+const S={pg:'visao',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'rec',per:'30',cmp:'prev',mod:'sintese',can:'',cat:'',bal:'',eixo:'pedido',rec:'liq',
  gran:'dia',ind:'liq',srt:{},oc:{},mais:false,d1:'',d2:''};
 function addD(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function jan(){
@@ -570,60 +570,114 @@ function colToggle(cols){
   `<button data-oc="${c.k}" class="${(S.oc[S.pg]||{})[c.k]?'':'on'}">${c.t}</button>`).join('')}</div>`}
 
 /* ==================== PÁGINAS ==================== */
+// ARVORE DE KPIS (30/08/2026). Cada tela e uma PERGUNTA do negocio, na ordem em que o Gabriel
+// definiu: o negocio se paga? > estamos comprando clientes bem? > a amostra converte? > o cliente
+// fica? > o site converte? "Canais e campanhas" fica como a unica visao adicional (grid completo).
 const PGS={
- resumo:{t:'Resumo executivo',ic:'M3 12h4l3-8 4 16 3-8h4'},
- canais:{t:'Canais e campanhas',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
- tipocliente:{t:'Tipo de cliente',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
- mensal:{t:'Mensal',ic:'M3 4h18v16H3zM3 9h18M8 4v16'},
- semanal:{t:'Semanal',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
- matriz:{t:'Matriz',ic:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18'},
+ visao:{t:'Visão geral',ic:'M3 12h4l3-8 4 16 3-8h4'},
  resultado:{t:'Resultado',ic:'M3 3v18h18M7 15l4-5 3 3 5-7'},
+ aquisicao:{t:'Aquisição',ic:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M7 14h3M7 18h6'},
+ amostras:{t:'Amostras',ic:'M9 3h6v4l4 9a4 4 0 0 1-4 5H9a4 4 0 0 1-4-5l4-9zM9 7h6'},
+ base:{t:'Base e assinaturas',ic:'M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M22 20v-2a4 4 0 0 0-3-3.9'},
+ jornada:{t:'Jornada do site',ic:'M4 20V10M10 20V4M16 20v-8M22 20h-20'},
+ canais:{t:'Canais e campanhas',ic:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18'},
  definicoes:{t:'Definições',ic:'M12 3l9 5v8l-9 5-9-5V8zM12 12v9M12 12L3 8M12 12l9-4'},
  config:{t:'Configurações',ic:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.5L4.5 8.4a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'}
 };
 
+// PAGO x NAO-PAGO por canal — a tese do board (16/08): o gargalo da Cells e atencao barata, entao
+// a fatia de novos que chega SEM midia paga e KPI de primeira linha. A flag vem de
+// core.fonte_canonica (D.fontes); os canais de midia comprada entram por seguranca mesmo que a
+// fonte_canonica nao os liste.
+const PAGOCANAL={meta:1,google_ads:1,tiktok:1,whatsapp:1};
+(D.fontes||[]).forEach(f=>{ if(f.pago) PAGOCANAL[f.canal]=1 });
+const ehPago=c=>!!PAGOCANAL[c];
 
-/* ==================== SEMANAL — realizado x projetado ==================== */
+// CAIXA GERADO (regra do Gabriel, 30/08): faturamento − taxas − frete − mídia, SEM tirar o CMV —
+// o estoque ja foi pago, entao vender do estoque existente gera caixa mesmo com margem contabil
+// ruim. Vale ate o estoque precisar de reposicao; a margem de contribuicao vigia esse dia.
+// Na vw_dre_dia: caixa = resultado + cmv (devolve o CMV que a cascata tirou).
+const caixaGerado=T=>(+T.resultado||0)+(+T.cmv||0);
+// soma as colunas da DRE numa janela
+function dreJanela(j){
+ const K=['pedidos','valor_tabela','descontos','faturamento','cmv','taxas','frete_liquido','midia',
+   'margem_contribuicao','resultado','reembolsos','pedidos_sem_cmv','pedidos_frete_estimado','pedidos_fora_do_bling','frete_cobrado'];
+ const T=Object.fromEntries(K.map(k=>[k,0]));
+ for(const r of (D.dre||[])){const d=String(r.dia).slice(0,10);
+  if(j&&!inP(d,j))continue; K.forEach(k=>T[k]+=(+r[k]||0))}
+ return T;
+}
+
+
+/* ============ helpers compartilhados: janela 7d fechada, mes corrente, metas ============ */
+const dlOk=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
+  const p=100*a/b-100; return `<span style="color:${p>=0?'var(--vd)':'var(--vm)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
+const dlRuim=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
+  const p=100*a/b-100; return `<span style="color:${p<=0?'var(--vd)':'var(--vm)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
+const cdS=(t,v,n)=>`<div class="cd"><div class="k">${t}</div><div class="v">${v}</div><div class="c f">${n||''}</div></div>`;
+const pctD=(a,b)=>(b&&b!==0)?100*a/b:null;
+// ultima janela de 7 dias FECHADA (o dia corrente nao tem gasto do Meta — coletor ~7h atras)
+function janela7Fechada(){
+ const J=D.k7||[]; if(!J.length)return null;
+ const jF=J.filter(x=>String(x.ate).slice(0,10)<=FECHADO);
+ return jF.length?jF[jF.length-1]:J[J.length-1];
+}
+const mesCorrente=()=>{const MS2=D.kmes||[];
+ return MS2.filter(m=>m.fat_op_meta!=null).slice(-1)[0]||MS2[MS2.length-1]||{}};
+// quebra da meta do mes — usada na Visao geral
+function quebraMeta(mes){
+ if(mes.fat_meta==null&&mes.fat_op_meta==null) return '<div class="emp">Sem meta cadastrada em <code>core.plano_mes</code> para este mês.</div>';
+ const qbr=[['1 · Novos','fat_novos','fat_novos_meta'],['2 · Recompra','fat_recorrente','fat_recorrente_meta'],
+  ['3 · Novos assinantes','novos_assinantes','novos_assinantes_meta'],
+  ['Total da conta','fat_op','fat_op_meta'],['Investimento','custo_total','custo_meta_plano'],
+  ['Fora · Amostra','amostra','amostra_meta'],['Fora · MRR','mrr','mrr_meta']].map(([n,k,mk])=>{
+  const real=mes[k],metaMes=mes[mk];
+  const k2=(mes.dias_decorridos||0)/(mes.dias_do_mes||31);
+  const metaHoje=metaMes!=null?metaMes*k2:null, p=pctD(real,metaHoje);
+  return `<tr${n.startsWith('Fora')?' class="sub"':''}><td class="l">${n}</td><td>${R0(real)}</td>
+    <td>${R0(metaHoje)}</td><td>${p==null?'—':PC(p)}</td><td>${R0(metaMes)}</td>
+    <td>${metaMes==null?'—':R0(metaMes-real)}</td></tr>`}).join('');
+ return `<div class="tw"><table><thead><tr><th class="l">Linha</th><th>Realizado</th><th>Deveria estar</th>
+  <th>Ritmo</th><th>Meta do mês</th><th>Falta</th></tr></thead><tbody>${qbr}</tbody></table></div>`;
+}
+// ciclo de assinatura: linhas exibiveis (a transicao M->M+1 so fecha quando M+1 acaba)
+function cicloLinhas(){
+ const C=(D.assinCiclo||[]).map(r=>({...r,mes:String(r.mes).slice(0,10)}));
+ const mesAtual=MAX.slice(0,7)+'-01';
+ return C.filter(r=>r.mes<mesAtual).map(r=>{
+  const prox=new Date(r.mes+'T12:00:00'); prox.setMonth(prox.getMonth()+1);
+  const proxK=prox.toISOString().slice(0,7);
+  return {...r,emCurso:proxK===MAX.slice(0,7)}});
+}
+
+/* ==================== AQUISIÇÃO — a conta + de onde vêm os novos ==================== */
 // A conta e NOVOS + RECOMPRA + NOVOS ASSINANTES (regra do Gabriel, 04/08). Amostra e MRR ficam
-// FORA do ROAS e do CAC: amostra nao e venda que a midia precisa pagar e MRR e renovacao de
-// assinante de mes anterior. Os dois aparecem, em bloco proprio.
-function pgSemanal(){
- const J=D.k7||[], SM=D.ksem||[], MS=D.kmes||[];
+// FORA do ROAS e do CAC. A novidade de 30/08: a quebra PAGO x NAO-PAGO — o gargalo declarado do
+// negocio e atencao barata, entao a fatia de novos sem midia paga e a metrica da tese.
+function pgAquisicao(){
+ const J=D.k7||[];
  if(!J.length) return `<div class="emp">Sem dado de janela de 7 dias. Confira <code>core.vw_kpi_7d</code>.</div>`;
- // A ultima linha de vw_kpi_7d e a janela que termina HOJE — e hoje ainda nao tem gasto do Meta
- // (coletor ~7h atras). Em 06/08/2026 isso dava CAC de R$ 411 onde a janela fechada dava R$ 461.
- // Manchete so com janela fechada; o dia em aberto aparece no aviso, nao no numero.
- const jFech=J.filter(x=>String(x.ate).slice(0,10)<=FECHADO);
- const j=jFech.length?jFech[jFech.length-1]:J[J.length-1];
- const mes=MS.filter(m=>m.fat_op_meta!=null).slice(-1)[0]||MS[MS.length-1]||{};
- const dl=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
-   const p=100*a/b-100; return `<span style="color:${p>=0?'var(--ok)':'var(--er)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
- const dlInv=(a,b)=>{if(a==null||b==null||!b)return'<span class="t3">—</span>';
-   const p=100*a/b-100; return `<span style="color:${p<=0?'var(--ok)':'var(--er)'}">${p>=0?'▲':'▼'} ${PC(Math.abs(p))}</span>`};
- const cd=(t,v,n)=>`<div class="cd"><div class="k">${t}</div><div class="v">${v}</div><div class="n">${n}</div></div>`;
- const pct=(a,b)=>(b&&b!==0)?100*a/b:null;
+ const j=janela7Fechada(), SM=D.ksem||[];
 
- const conta=`<div class="cds">
-  ${cd('Faturamento da conta',R0(j.fat_op),`${dl(j.fat_op,j.fat_op_ant)} vs 7 dias antes · meta ${R0(j.fat_op_meta_ritmo)} (${PC(j.pct_op_ritmo)})`)}
-  ${cd('ROAS da conta',RT(j.roas_op),`${dl(j.roas_op,j.roas_op_ant)} · meta ${RT(j.roas_op_meta)}`)}
-  ${cd('CAC dos novos',R0(j.cac_novos),`${dlInv(j.cac_novos,j.cac_novos_ant)} · meta ${R0(j.cac_meta)}`)}
-  ${cd('Investido',R0(j.custo_total),`${dl(j.custo_total,j.custo_total_ant)} · orçamento do ritmo ${R0(j.custo_meta_ritmo)}`)}
+ const conta=`<div class="gr g6">
+  ${cdS('Faturamento da conta',R0(j.fat_op),`${dlOk(j.fat_op,j.fat_op_ant)} vs 7 dias antes · meta ${R0(j.fat_op_meta_ritmo)} (${PC(j.pct_op_ritmo)})`)}
+  ${cdS('ROAS da conta',RT(j.roas_op),`${dlOk(j.roas_op,j.roas_op_ant)} · meta ${RT(j.roas_op_meta)}`)}
+  ${cdS('CAC dos novos',R0(j.cac_novos),`${dlRuim(j.cac_novos,j.cac_novos_ant)} · meta ${R0(j.cac_meta)}`)}
+  ${cdS('Investido',R0(j.custo_total),`${dlOk(j.custo_total,j.custo_total_ant)} · orçamento do ritmo ${R0(j.custo_meta_ritmo)}`)}
  </div>`;
- const blocos=`<div class="cds">
-  ${cd('1 · Novos',R0(j.fat_novos),`${j.qtd_novos} clientes novos · meta ${RT(j.qtd_novos_meta_ritmo)}`)}
-  ${cd('2 · Recompra (antigos)',R0(j.fat_recorrente),'cliente que já tinha comprado')}
-  ${cd('3 · Novos assinantes',R0(j.novos_assinantes),'vira MRR no mês que vem')}
- </div>`;
- const fora=`<div class="cds">
-  ${cd('Fora · Amostra',R0(j.amostra),`${j.qtd_amostras} amostras · não é venda que a mídia paga`)}
-  ${cd('Fora · MRR',R0(j.mrr),'renovação de assinante de mês anterior')}
+ const blocos=`<div class="gr g6">
+  ${cdS('1 · Novos',R0(j.fat_novos),`${j.qtd_novos} clientes novos · meta ${RT(j.qtd_novos_meta_ritmo)}`)}
+  ${cdS('2 · Recompra (antigos)',R0(j.fat_recorrente),'cliente que já tinha comprado')}
+  ${cdS('3 · Novos assinantes',R0(j.novos_assinantes),'vira MRR no mês que vem')}
+  ${cdS('Fora · Amostra',R0(j.amostra),`${j.qtd_amostras} amostras · não é venda que a mídia paga`)}
+  ${cdS('Fora · MRR',R0(j.mrr),'renovação de assinante de mês anterior')}
  </div>`;
 
  const linhasSem = SM.slice().reverse().slice(0,14).map(w=>{
    const semMeta=!w.dias_com_plano, parcial=w.dias_com_plano>0&&w.dias_com_plano<7;
    const meta = w.semana_parcial ? (w.fat_op_meta||0)*(w.dias_decorridos||0)/7 : w.fat_op_meta;
-   const p = pct(w.fat_op, meta);
-   const cor = w.acao==='PAUSA'?'var(--er)':w.acao==='ESCALA'?'var(--ok)':'var(--av)';
+   const p = pctD(w.fat_op, meta);
+   const cor = w.acao==='PAUSA'?'var(--vm)':w.acao==='ESCALA'?'var(--vd)':'var(--lj)';
    return `<tr${w.semana_parcial?' class="sub"':''}>
      <td class="l">${DT(w.semana).slice(0,5)}–${DT(w.semana_fim).slice(0,5)}${w.semana_parcial?' <span class="t3">em curso</span>':''}</td>
      <td>${R0(w.fat_op)}</td><td>${semMeta?'—':R0(meta)+(parcial?` <span class="t3">(${w.dias_com_plano}d)</span>`:'')}</td>
@@ -631,454 +685,280 @@ function pgSemanal(){
      <td>${R0(w.cac_novos_4s)}</td><td>${RT(w.roas_compras_liq_4s)}</td>
      <td style="color:${cor};font-weight:650">${w.acao}</td></tr>`}).join('');
 
- const qbr = [['1 · Novos','fat_novos','fat_novos_meta'],['2 · Recompra','fat_recorrente','fat_recorrente_meta'],
-   ['3 · Novos assinantes','novos_assinantes','novos_assinantes_meta'],
-   ['Total da conta','fat_op','fat_op_meta'],['Investimento','custo_total','custo_meta_plano'],
-   ['Fora · Amostra','amostra','amostra_meta'],['Fora · MRR','mrr','mrr_meta']].map(([n,k,mk])=>{
-   const real=mes[k],metaMes=mes[mk];
-   const k2=(mes.dias_decorridos||0)/(mes.dias_do_mes||31);
-   const metaHoje=metaMes!=null?metaMes*k2:null, p=pct(real,metaHoje);
-   return `<tr${n.startsWith('Fora')?' class="sub"':''}><td class="l">${n}</td><td>${R0(real)}</td>
-     <td>${R0(metaHoje)}</td><td>${p==null?'—':PC(p)}</td><td>${R0(metaMes)}</td>
-     <td>${metaMes==null?'—':R0(metaMes-real)}</td></tr>`}).join('');
+ // DE ONDE VEM OS NOVOS — pago x nao-pago, no periodo do seletor. Novos = novo_avulso +
+ // novo_assinatura, pela atribuicao de aquisicao. CAC so existe no lado pago (o nao-pago nao tem
+ // denominador — e o ponto: cliente que chega de graca).
+ const jp=jan(), A=agg(jp,{canalView:true});
+ const G={pago:Object.assign(Z(),{spend:0}),organico:Object.assign(Z(),{spend:0})};
+ for(const c of Object.values(A.can)){
+  const g=ehPago(c.canal)?G.pago:G.organico;
+  for(const k in c)if(typeof c[k]==='number'&&k!=='cli')g[k]=(g[k]||0)+c[k];
+  if(c.ks)for(const x of c.ks)g.ks.add(x);
+ }
+ G.pago.cli=G.pago.ks.size; G.organico.cli=G.organico.ks.size;
+ const novG=o=>o.p_novo_avulso+o.p_novo_assinatura;
+ const totNov=novG(G.pago)+novG(G.organico);
+ const pctNP=dv(novG(G.organico),totNov);
+ const linhaG=(n,o,pago)=>`<tr><td class="l">${n}</td>
+   <td>${IN(novG(o))}</td><td>${PC(dv(novG(o),totNov)*100)}</td>
+   <td>${R0(o.r_novo_avulso+o.r_novo_assinatura)}</td>
+   <td>${pago?R0(o.spend):'<span class="na">—</span>'}</td>
+   <td>${pago?R$(dv(o.spend,novG(o))):'<span class="pl m">R$ 0</span>'}</td>
+   <td>${IN(o.p_novo_assinatura)}</td></tr>`;
+ const tesePagoNP=`<div class="sc"><div class="sch"><div><h2>De onde vêm os novos — pago × não-pago</h2>
+  <p>Período do seletor (${DT(jp[0])} a ${DT(jp[1])}), atribuição de aquisição. A tese do negócio é
+  <b>atenção barata</b>: essa fatia verde precisa crescer para as metas fecharem sem estourar o orçamento.</p></div></div>
+  <div class="gr g6">
+   ${cdS('% novos de canal não-pago',PC((pctNP||0)*100),`${IN(novG(G.organico))} de ${IN(totNov)} novos clientes`)}
+   ${cdS('% assinatura direta',PC((dv(A.p_novo_assinatura,A.p_novo_avulso+A.p_novo_assinatura)||0)*100),'novos que já entram assinando')}
+   ${cdS('Ticket da 1ª compra',R$(dv(A.r_novo_avulso+A.r_novo_assinatura,A.p_novo_avulso+A.p_novo_assinatura)),'receita de novos ÷ novos')}
+  </div>
+  <div class="tw"><table><thead><tr><th class="l">Origem</th><th>Novos</th><th>% dos novos</th>
+   <th>Receita de novos</th><th>Gasto</th><th>CAC</th><th>Assinaram direto</th></tr></thead>
+   <tbody>${linhaG('Mídia paga',G.pago,1)}${linhaG('Não-pago (orgânico, direto, indicação, IA…)',G.organico,0)}</tbody></table></div>
+  <div class="al w" style="margin-top:8px"><b>“Não-pago” aqui é ausência de mídia comprada, não custo zero de verdade</b> —
+   conteúdo, creator e parceria custam tempo e produto. E parte do não-atribuído pode ser eco da
+   própria mídia paga (viu anúncio, entrou digitando). Leia como direção, não como fronteira exata.</div></div>`;
 
  return `${avisoAberto('A conta abaixo fecha em '+DT(FECHADO)+' — a janela que inclui hoje ainda não tem o gasto do dia.')}
  <div class="sc"><div class="sch"><div><h2>A conta — 7 dias, ${DT(j.de).slice(0,5)} a ${DT(j.ate).slice(0,5)}</h2>
   <p>Janela móvel: sempre 7 dias dos dois lados, sem o viés da semana pela metade. A conta é
   <b>novos + recompra + novos assinantes</b>; amostra e MRR ficam fora do ROAS e do CAC.</p></div></div>
   ${conta}</div>
- <div class="sc"><div class="sch"><div><h2>Composição da conta</h2></div></div>${blocos}</div>
- <div class="sc"><div class="sch"><div><h2>Fora da conta</h2>
-  <p>Aparecem, mas não entram no ROAS nem no CAC.</p></div></div>${fora}</div>
+ <div class="sc"><div class="sch"><div><h2>Composição da conta</h2>
+  <p>Amostra e MRR aparecem, mas não entram no ROAS nem no CAC.</p></div></div>${blocos}</div>
+ ${tesePagoNP}
  <div class="sc"><div class="sch"><div><h2>Semana a semana</h2>
   <p>A ação lê a janela de 4 semanas, nunca a semana isolada.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Semana</th><th>Conta</th><th>Meta</th><th>%</th>
    <th>Novos</th><th>Investido</th><th>CAC 4s</th><th>ROAS 4s</th><th>Ação</th></tr></thead>
-   <tbody>${linhasSem||'<tr><td colspan="9" class="l">Sem semanas no período.</td></tr>'}</tbody></table></div></div>
- <div class="sc"><div class="sch"><div><h2>Quebra da meta — ${mes.mes?DT(mes.mes).slice(3):''}</h2>
-  <p>“Deveria estar” = meta do mês × dias decorridos. O MRR não se comporta assim: 7 das 13
-  cobranças do clube caem no dia 30/31, então ele sobe de uma vez no fim do mês.</p></div></div>
-  <div class="tw"><table><thead><tr><th class="l">Linha</th><th>Realizado</th><th>Deveria estar</th>
-   <th>Ritmo</th><th>Meta do mês</th><th>Falta</th></tr></thead><tbody>${qbr}</tbody></table></div></div>`;
+   <tbody>${linhasSem||'<tr><td colspan="9" class="l">Sem semanas no período.</td></tr>'}</tbody></table></div></div>`;
 }
-
-/* ==================== MÍDIA — canal > campanha > conjunto > anúncio ==================== */
-function pgMidia(){
- const R=D.grid||[];
- if(!R.length) return `<div class="emp">Sem dado de mídia. Confira <code>core.vw_ads_metricas_dia</code>.</div>`;
- // maxd para no ultimo dia FECHADO: o dia corrente chega com pedido e sem gasto (o coletor do
- // Meta esta ~7h atras) e derrubava o CPA do grid de R$ 78,60 para R$ 59,50 — 24% otimista.
- const dias=+S.gper||7, maxd=FECHADO;
- const lim=new Date(maxd+'T12:00:00'); lim.setDate(lim.getDate()-(dias-1));
- const de=lim.toISOString().slice(0,10);
- // As tres ultimas vem da tela Campanhas, que foi fundida aqui: amostra e assinante nao existem
- // no grid. Elas tem grao de CONJUNTO (nao de anuncio), entao so somam ate esse nivel.
- const KS=['spend','impressoes','ob_clicks','plat_lpv','plat_atc','plat_checkout','plat_compras',
-   'pedidos','nc_pedidos','receita','nc_receita','conta','margem','nc_margem',
-   'amostras','assin_novo','nc_estrito'];
- const Z0=()=>Object.fromEntries(KS.map(k=>[k,0]));
- const som=(d,r)=>{KS.forEach(k=>d[k]+=(+r[k]||0));return d};
- const raiz=new Map(); const q=(S.gbusca||'').toLowerCase();
- for(const r of R){
-   if(r.dia<de||r.dia>maxd) continue;
-   if(q && ![r.campanha,r.conjunto,r.anuncio].some(x=>String(x||'').toLowerCase().includes(q))) continue;
-   const n1=raiz.get(r.canal)||{n:r.canal,lv:1,a:Z0(),f:new Map()}; raiz.set(r.canal,n1); som(n1.a,r);
-   const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); som(n2.a,r);
-   const n3=n2.f.get(r.conjunto)||{n:r.conjunto,lv:3,a:Z0(),f:new Map()}; n2.f.set(r.conjunto,n3); som(n3.a,r);
-   const n4=n3.f.get(r.anuncio)||{n:r.anuncio,lv:4,a:Z0(),f:null,ni:r.nao_identificado}; n3.f.set(r.anuncio,n4); som(n4.a,r);
- }
- // Amostras, novos assinantes e o "NC estrito" vem de core.vw_campanha_dia_real, com grao de
- // conjunto. Somam so ate o nivel 3 — no anuncio ficam em branco de proposito, porque atribuir
- // amostra a criativo individual nao tem base. Nao passam por `som` do grid para nao duplicar.
- for(const r of (D.camp||[])){
-   const d=String(r.dia||'').slice(0,10);
-   if(d<de||d>maxd) continue;
-   if(q && ![r.campanha,r.conjunto].some(x=>String(x||'').toLowerCase().includes(q))) continue;
-   const add=o=>{o.amostras+=(+r.ped_amostra||0);o.assin_novo+=(+r.assin_novo||0);o.nc_estrito+=(+r.ped_aquisicao||0)};
-   const n1=raiz.get('meta')||{n:'meta',lv:1,a:Z0(),f:new Map()}; raiz.set('meta',n1); add(n1.a);
-   const n2=n1.f.get(r.campanha)||{n:r.campanha,lv:2,a:Z0(),f:new Map()}; n1.f.set(r.campanha,n2); add(n2.a);
-   const n3=n2.f.get(r.conjunto)||{n:r.conjunto,lv:3,a:Z0(),f:new Map()}; n2.f.set(r.conjunto,n3); add(n3.a);
- }
- // metrica de CUSTO nao existe sem spend: 0/n daria 0 e pintaria de verde um CPA inexistente
- const cst=(sp,n)=>(!sp||!n)?null:sp/n, dv=(a,b)=>(b&&b!==0)?a/b:null;
- const COLS=[
-  {k:'spend',t:'Spend',f:a=>R0(a.spend),v:a=>a.spend},
-  {k:'pedidos',t:'Purchases',f:a=>nf(a.pedidos,0),v:a=>a.pedidos},
-  {k:'cpa',t:'CPA',f:a=>R0(cst(a.spend,a.pedidos)),v:a=>cst(a.spend,a.pedidos)},
-  {k:'aov',t:'AOV',f:a=>R0(dv(a.receita,a.pedidos)),v:a=>dv(a.receita,a.pedidos)},
-  {k:'conta',t:'Conta',f:a=>R0(a.conta),v:a=>a.conta},
-  {k:'roas',t:'ROAS',f:a=>RT(a.spend?dv(a.conta,a.spend):null),v:a=>a.spend?dv(a.conta,a.spend):null,c:'roas'},
-  {k:'ncp',t:'NCP',f:a=>nf(a.nc_pedidos,0),v:a=>a.nc_pedidos},
-  {k:'nccpa',t:'NC CPA',f:a=>R0(cst(a.spend,a.nc_pedidos)),v:a=>cst(a.spend,a.nc_pedidos),c:'cac'},
-  {k:'ncroas',t:'NC ROAS',f:a=>RT(a.spend?dv(a.nc_receita,a.spend):null),v:a=>a.spend?dv(a.nc_receita,a.spend):null},
-  {k:'ncpp',t:'NC PP',f:a=>R0(dv(a.nc_margem,a.nc_pedidos)),v:a=>dv(a.nc_margem,a.nc_pedidos)},
-  // A RESPOSTA PARA CONJUNTO MISTO. Um conjunto que entrega amostra E compra nao precisa ter o
-  // gasto rateado: a margem ja soma tudo que ele fez, cada pedido valendo o que realmente deixou
-  // (amostra R$ 22,37 · novo avulso R$ 113,16 · 1a de assinatura R$ 99,67 — julho/2026).
-  // Acima de 1 o conjunto se paga na primeira compra. Julho inteiro ficou abaixo, o que bate com
-  // o payback medido de 0,42x — nao e alarme novo, e o estado conhecido da conta.
-  {k:'mpr',t:'Margem/Gasto',
-   tip:'Margem realizada ÷ gasto. Conta o que o pedido deixou de fato, sem projetar renovação nem conversão futura de amostra. Acima de 1 o conjunto se paga na primeira compra.',
-   f:a=>RT(a.spend?dv(a.margem,a.spend):null),v:a=>a.spend?dv(a.margem,a.spend):null,c:'mpr'},
-  {k:'cr',t:'CR',f:a=>PC(dv(100*a.pedidos,a.plat_lpv),2),v:a=>dv(100*a.pedidos,a.plat_lpv),p:1},
-  {k:'atc',t:'ATC',f:a=>nf(a.plat_atc,0),v:a=>a.plat_atc,p:1},
-  {k:'catc',t:'Cost ATC',f:a=>R0(cst(a.spend,a.plat_atc)),v:a=>cst(a.spend,a.plat_atc),p:1},
-  {k:'ck',t:'Start Checkout',f:a=>nf(a.plat_checkout,0),v:a=>a.plat_checkout,p:1},
-  {k:'uv',t:'Unique Visitors',f:a=>nf(a.plat_lpv,0),v:a=>a.plat_lpv,p:1},
-  {k:'cpv',t:'CPV',f:a=>R$(cst(a.spend,a.plat_lpv)),v:a=>cst(a.spend,a.plat_lpv),p:1},
-  {k:'obc',t:'OB Clicks',f:a=>nf(a.ob_clicks,0),v:a=>a.ob_clicks,p:1},
-  {k:'obctr',t:'OB CTR',f:a=>PC(dv(100*a.ob_clicks,a.impressoes),2),v:a=>dv(100*a.ob_clicks,a.impressoes),p:1},
-  // vindas da tela Campanhas — grao de conjunto, em branco no nivel de anuncio
-  {k:'am',t:'Samples',ce:1,f:a=>a.amostras?nf(a.amostras,0):'<span class="na">—</span>',v:a=>a.amostras},
-  {k:'cam',t:'Cost/Sample',ce:1,f:a=>R0(cst(a.spend,a.amostras)),v:a=>cst(a.spend,a.amostras)},
-  {k:'asn',t:'New Subs',ce:1,f:a=>a.assin_novo?nf(a.assin_novo,0):'<span class="na">—</span>',v:a=>a.assin_novo},
-  {k:'nce',t:'NCP estrito',ce:1,
-   tip:'Cliente novo contado so quando o modelo tambem atribuiu a AQUISICAO ao Meta. A coluna NCP ao lado credita a campanha que esta na UTM do pedido. Em 30 dias sao 47 contra 28 — CAC de R$ 381 contra R$ 640. Nao e bug, e first click contra last click.',
-   f:a=>a.nc_estrito?nf(a.nc_estrito,0):'<span class="na">—</span>',v:a=>a.nc_estrito},
-  {k:'cace',t:'CAC estrito',ce:1,f:a=>R0(cst(a.spend,a.nc_estrito)),v:a=>cst(a.spend,a.nc_estrito),c:'cac'}];
- const col=COLS.find(c=>c.k===S.gord)||COLS[0];
- const ord=l=>l.sort((x,y)=>{const a=col.v(x.a),b=col.v(y.a);
-   if(a==null&&b==null)return 0; if(a==null)return 1; if(b==null)return -1; return b-a});
- // COR SO ONDE A CONTA E VALIDA. Nenhuma linha some do grid — um conjunto entrega amostra E compra,
- // entao esconder e mentir. Mas pintar tambem mentia: o CJ_kit_exp fez 54 amostras e 0 compras de
- // aquisicao em julho e aparecia com CAC vermelho, reprovado por uma conta que ele nao tentou fazer.
- // Regra: CAC e ROAS so ganham cor com pelo menos 3 pedidos de aquisicao no periodo. Abaixo disso o
- // numero continua na tela, em cinza — e ruido amostral, nao veredito.
- const MIN_AQ=3;
- const cor=(c,v,a)=>{if(v==null||!c.c)return'';
-   // Margem/Gasto vale para qualquer conjunto, inclusive o que so entrega amostra — e justamente
-   // a coluna que compara conjunto misto com conjunto puro. Nao passa pelo piso de aquisicao.
-   if(c.c==='mpr')return v>=1?'var(--ok)':v>=.5?'var(--av)':'var(--er)';
-   if((a.nc_estrito||a.nc_pedidos||0)<MIN_AQ) return 'var(--t3)';
-   if(c.c==='roas')return v<1?'var(--er)':v>2?'var(--ok)':'var(--av)';
-   return v>250?'var(--er)':v<180?'var(--ok)':'var(--av)'};
- const out=[];
- const linha=(no,cam)=>{
-   const tem=no.f&&no.f.size>0, ab=!!S.gop[cam];
-   const tds=COLS.map(c=>{const v=c.v(no.a),k=cor(c,v,no.a);
-     return `<td class="${c.p?'t3':''}" ${k?`style="color:${k}"`:''}>${c.f(no.a)}</td>`}).join('');
-   out.push(`<tr class="${no.lv>2?'sub':''}"><td class="l fx" style="padding-left:${4+(no.lv-(S.gcanal?2:1))*16}px">`
-    +(tem?`<span data-gtog="${encodeURIComponent(cam)}" style="cursor:pointer;color:var(--t3);display:inline-block;width:13px">${ab?'▾':'▸'}</span>`:'<span style="display:inline-block;width:13px"></span>')
-    +`${no.n}</td>${tds}</tr>`);
-   if(tem&&ab) ord([...no.f.values()]).forEach(f=>linha(f,cam+'›'+f.n));
- };
- // Canal e SELETOR no topo (padrao Triple Whale), nao linha da tabela: com um canal escolhido a
- // tabela ja comeca em campanha e economiza um clique em toda leitura.
- let lst;
- if(S.gcanal){ const c=raiz.get(S.gcanal); lst = c?ord([...c.f.values()]):[]; }
- else lst = ord([...raiz.values()]);
- for(const n of lst){ if(S.gsp&&!n.a.spend) continue; linha(n,n.n); }
- const tot=Z0(); lst.forEach(n=>som(tot,n.a));
- out.push(`<tr class="tot"><td class="l fx">TOTAL</td>${COLS.map(c=>`<td>${c.f(tot)}</td>`).join('')}</tr>`);
- const th=VIS.map(c=>`<th data-gord="${c.k}" title="${c.tip||''}" class="${c.p?'t3':''}" style="cursor:pointer">${c.t}${S.gord===c.k?' ↓':''}</th>`).join('');
- const per=[['7','7 dias'],['14','14 dias'],['30','30 dias'],['60','60 dias']]
-   .map(([v,t])=>`<button data-gper="${v}" class="${String(S.gper)===v?'on':''}">${t}</button>`).join('');
- const canais=[...raiz.keys()].sort();
- const selCanal=`<select data-gcanal class="sel"><option value="">Todos os canais</option>`
-   +canais.map(c=>`<option value="${c}" ${S.gcanal===c?'selected':''}>${c}</option>`).join('')+`</select>`;
- if(S.bal==='mrr') return avisoMRR;
- return `${avisoAberto('O grid vai até '+DT(FECHADO)+'.')}${avisoBalde()}
- <div class="sc"><div class="sch"><div><h2>Grid de mídia</h2>
-  <p>Abre <b>canal → campanha → conjunto → anúncio</b>. Colunas em cinza são reportadas pelo
-  Meta (pixel da plataforma); as demais são pedido real medido no banco.</p></div>
-  <div class="sg">${selCanal}${per}</div></div>
-  <div class="tw"><table><thead><tr><th class="l fx">Campanha</th>${th}</tr></thead>
-   <tbody>${out.join('')}</tbody></table></div></div>
- <div class="sc"><p class="t3" style="font-size:12px;line-height:1.6">
-  <b>Receita por anúncio</b> vem do <code>utm_term</code>, que casa com o nome do anúncio no Meta
-  em ~78% do spend. O que não casa aparece como <b>(não identificado)</b> dentro do conjunto, com
-  spend zero — nunca colado em outro criativo.<br>
-  <b>Unique Visitors, CPV e CR</b> usam o <code>landing_page_view</code> do Meta: é visita
-  reportada pela plataforma, só de tráfego Meta — não é sessão de site.</p></div>`;
-}
-
-function pgResumo(){
- const j=jan(),jc=janC(j),A=agg(j),B=jc?agg(jc):null;
- const g=S.gran, s=serie(j,g), sm=serie([MIN,MAX],'mes');
- const sp=k=>s.map(d=>{const A2={...Z(),...d};return M[k]?M[k].g(A2)||0:0});
- // Em Amostras e MRR nao ha gasto proprio: os cards de Gasto e ROAS saem da manchete em vez de
- // mostrar R$ 0 e "—", que o olho le como dado faltando.
- const r1=(S.bal==='amostra'||S.bal==='mrr'?['rec','ped','cli','tm']:['rec','spend','roas','ped','cli','tm'])
-  .map(k=>CD(k,A,B,['rec','spend','ped'].includes(k)?sp(k):null)).join('');
- const r2=['nov','cacn','rnov','ncroas','nassin','cacа','txassin'].map(k=>CD(k,A,B)).join('');
- const r3=['antc','antia','renov','rrec','pcrec','txant'].map(k=>CD(k,A,B)).join('');
- // preview de atribuição — top 5, SEM recorrente (regra do canal)
- const Ac=agg(j,{canalView:true});
- const top=Object.values(Ac.can).filter(c=>c.rec>0||c.spend>0).sort((a,b)=>b.rec-a.rec).slice(0,5);
- const tp=TB([
-  {k:'c',t:'Canal',l:1,fx:1,f:r=>r.canal,raw:r=>r.canal,tf:()=>'Top 5'},
-  {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
-  {k:'g',t:'Gasto',f:r=>r.spend>0?R0(r.spend):'<span class="na">sem dado</span>',raw:r=>r.spend,tf:t=>R0(t.spend)},
-  {k:'ro',t:'ROAS',f:r=>{const v=dv(r.rec,r.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>dv(r.rec,r.spend)??-1},
-  {k:'n',t:'Novos',f:r=>IN(r.p_novo_avulso+r.p_novo_assinatura),raw:r=>r.p_novo_avulso+r.p_novo_assinatura},
-  {k:'na',t:'Novos assin.',ce:1,f:r=>IN(r.p_novo_assinatura+r.p_antigo_inicio_assinatura),raw:r=>r.p_novo_assinatura+r.p_antigo_inicio_assinatura}
- ],top,top.reduce((a,r)=>{a.rec=(a.rec||0)+r.rec;a.spend=(a.spend||0)+r.spend;return a},{}));
- // saúde da assinatura
- const jr={}; D.jor.forEach(x=>jr[x.e]={n:+x.n,v:+x.v});
- const novasAssin=A.p_novo_assinatura+A.p_antigo_inicio_assinatura;
- const liq=novasAssin-(jr.cancel?0:0);
- const sa=`<div class="gr g6">
-  <div class="cd"><div class="k">Novas assinaturas</div><div class="v">${IN(novasAssin)}</div><div class="c f">no período</div></div>
-  <div class="cd"><div class="k">Renovações</div><div class="v">${IN(A.p_recorrente)}</div><div class="c f">${R0(A.r_recorrente)}</div></div>
-  <div class="cd"><div class="k">Cancelamentos</div><div class="v">${IN(jr.cancel?.n)}</div><div class="c f">histórico total</div></div>
-  <div class="cd"><div class="k">Receita recorrente</div><div class="v">${R0(A.r_recorrente)}</div><div class="c f">${PC(dv(A.r_recorrente,A.rec)*100)} do total</div></div>
-  <div class="cd"><div class="k">Churn</div><div class="v na" style="font-size:15px">sem fonte</div><div class="c f">API do Appstle bloqueada</div></div></div>
-  <div class="al w">Cancelamento e pausa de assinatura <b>não têm fonte confiável</b> — a API do Appstle está bloqueada pelo plano. O número de cancelamento acima vem de <code>cancelled_at</code> da Shopify, que cobre só parte do ciclo.</div>`;
- // alertas derivados
- const al=[];
- const semG=Object.values(Ac.can).filter(c=>c.rec>800&&c.spend===0&&!['direct','nao-atribuido','woo-legado','instagram','email','ia'].includes(c.canal));
- if(semG.length)al.push(['c',`<b>${semG.map(c=>c.canal).join(' e ')}</b> gerou ${R0(semG.reduce((a,c)=>a+c.rec,0))} com <b>gasto zero registrado</b>. ROAS, CPA e CAC desses canais são indeterminados — não bons.`]);
- if(B){const c1=M.cacn.g(A),c0=M.cacn.g(B);
-  if(c1&&c0)al.push([c1>c0*1.1?'w':'o',`O CAC de novo cliente ${c1>c0?'aumentou':'caiu'} <b>${PC(Math.abs((c1-c0)/c0*100))}</b>, de ${R$(c0)} para ${R$(c1)}.`])}
- const pr=dv(A.r_recorrente,A.rec)*100;
- if(pr)al.push([pr>=35?'o':'w',`A participação da receita recorrente está em <b>${PC(pr)}</b> do faturamento.`]);
- const cans=Object.values(Ac.can).filter(c=>c.p_novo_avulso+c.p_novo_assinatura>=5)
-  .map(c=>({c:c.canal,n:c.p_novo_avulso+c.p_novo_assinatura,tx:dv(c.p_novo_assinatura,c.p_novo_avulso+c.p_novo_assinatura)}))
-  .filter(x=>x.tx!=null).sort((a,b)=>b.tx-a.tx);
- if(cans.length>=2){const mais=Object.values(Ac.can).sort((a,b)=>(b.p_novo_avulso+b.p_novo_assinatura)-(a.p_novo_avulso+a.p_novo_assinatura))[0];
-  al.push(['o',`<b>${mais.canal}</b> trouxe mais clientes novos (${IN(mais.p_novo_avulso+mais.p_novo_assinatura)}), mas <b>${cans[0].c}</b> tem a maior taxa de assinatura direta (${PC(cans[0].tx*100)}).`])}
- const mpr=M.mpr.g(A);
- if(mpr!=null)al.push([mpr>=1?'o':'w',`Cada real gasto devolveu <b>${RT(mpr)}</b> de margem de contribuição. ${mpr>=1?'O período se paga na primeira compra.':'O retorno depende do valor acumulado — veja Cohorts.'}`]);
- // PAYBACK NO RESUMO. Fica em Cohorts com detalhe, mas e o numero que decide escalar midia:
- // enterrado numa aba interna ninguem ve. Consolida so os cohorts que TEM custo registrado.
+/* ==================== VISÃO GERAL — a árvore de KPIs, no mês corrente ==================== */
+// Uma tela = a arvore inteira (30/08/2026). Cada bloco e uma PERGUNTA com 3-4 numeros e um link
+// para a tela que aprofunda. FIXA NO MES CORRENTE de proposito: e a tela de abrir de manha, nao
+// de investigar — os filtros da barra nao se aplicam aqui.
+function pgVisao(){
+ const mes=mesCorrente(), j=janela7Fechada()||{};
+ const mesIni=MAX.slice(0,7)+'-01';
+ const T=dreJanela([mesIni,MAX]), cx=caixaGerado(T);
+ const jr={}; (D.jor||[]).forEach(x=>jr[x.e]={n:+x.n,v:+x.v});
+ const convAm=dv((jr.am_avulso?.n||0)+(jr.am_assin?.n||0), jr.am_total?.n);
+ const t1=(D.tempo||[]).find(t=>+t.ord===1);
+ const cic=cicloLinhas(), ult=cic[cic.length-1];
+ let sess=0; for(const r of (D.sess||[])){if(String(r.dia).slice(0,10)>=mesIni)sess+=(+r.sessoes||0)}
+ let spMes=0; for(const s of spend){if(s.dia>=mesIni)spMes+=(+s.custo||0)}
+ let novP=0,novNP=0;
+ for(const r of dias){ if(r.dia<mesIni)continue;
+  if(r.categoria==='novo_avulso'||r.categoria==='novo_assinatura'){
+   if(ehPago(r.canal_aq))novP+=r.pedidos; else novNP+=r.pedidos } }
+ const pctNP=dv(novNP,novP+novNP);
+ const bloco=(num,titulo,pergunta,go,cards,extra)=>`<div class="sc"><div class="sch">
+  <div><h2>${num} · ${titulo}</h2><p>${pergunta}</p></div>
+  ${go?`<button class="bt" data-go="${go}">Ver tela →</button>`:''}</div>
+  <div class="gr g6">${cards}</div>${extra||''}</div>`;
+ // payback — o numero que decide escalar midia, consolidado dos cohorts com custo registrado
+ let pbHtml='';
  (()=>{const pb=(D.payback||[]).filter(r=>r.cac_aprox!=null&&+r.cac_aprox>0);
   if(!pb.length)return;
-  const sp=pb.reduce((a,r)=>a+ +r.spend,0), cl=pb.reduce((a,r)=>a+ +r.clientes,0);
+  const sp2=pb.reduce((a,r)=>a+ +r.spend,0), cl=pb.reduce((a,r)=>a+ +r.clientes,0);
   const mg=pb.reduce((a,r)=>a+(+r.margem_180_por_cliente||0)*(+r.clientes),0);
-  const rz=dv(mg,sp); if(rz==null)return;
-  const canais=[...new Set(pb.map(r=>r.canal))];
-  al.push([rz>=1?'o':'c',`<b>Payback em 180 dias: ${rz.toFixed(2).replace('.',',')}x.</b>
-   ${R0(sp)} de mídia (${canais.join(', ')}) trouxeram ${IN(cl)} clientes pagantes, que devolveram
-   ${R$(dv(mg,cl))} de margem por cliente contra um CAC de ${R$(dv(sp,cl))}.
-   ${rz<1?`<b>Não se paga</b> — e o LTV não cresce depois: quem passou de 180 dias tem em média 1,67 pedidos e 1,5 mês de vida. Detalhe por cohort em Cohorts.`:'Detalhe por cohort em Cohorts.'}`])})();
- if(A.inf>0)al.push(['w',`<b>${IN(A.inf)}</b> pedidos têm origem <b>inferida</b> (herdada da aquisição), não medida. Contam em faturamento, mas nunca em ROAS de aquisição.`]);
- const sh=D.saude.map(p=>`<div class="al ${p.status==='OK'?'o':p.status==='ATRASADO'?'w':'c'}"><div><b>${p.fonte}</b> <span class="pl g">${p.tipo}</span><br><span style="color:var(--t2)">${p.status} · idade ${nf(+p.idade_horas,1)}h · SLA ${p.sla_horas}h · ${IN(+p.linhas)} linhas</span></div></div>`).join('');
- return `${avisoBalde()}<div class="sc"><div class="gr g6">${r1}</div></div>
- <div class="sc"><div class="sch"><div><h2>Aquisição</h2><p>Amostra <b>entra</b> no faturamento total, mas <b>não</b> conta como novo cliente nem no CAC — não é aquisição.</p></div></div><div class="gr g6">${r2}</div></div>
- <div class="sc"><div class="sch"><div><h2>Base e recorrência</h2></div></div><div class="gr g6">${r3}</div></div>
- <div class="sc"><div class="sch"><div><h2>Faturamento, gasto e ROAS</h2></div>
-  <div class="chk">${['dia','sem','mes'].map(x=>`<button data-gran="${x}" class="${g===x?'on':''}">${x==='dia'?'Diário':x==='sem'?'Semanal':'Mensal'}</button>`).join('')}</div></div>
-  <div class="pn"><div class="pnb">${chartRSR(s)}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Composição do faturamento</h2><p>As seis categorias empilhadas por mês. <b>Amostra entra no faturamento</b> — é receita real que entrou — mas nunca conta como novo cliente nem entra no CAC.</p></div></div>
-  <div class="pn"><div class="pnb">${chartStack(sm,ORD)}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Atribuição — top 5 canais</h2><p>Sem receita recorrente: atribuir renovação a canal não faz sentido.</p></div>
-  <button class="bt" data-go="canais">Ver tudo →</button></div><div class="pn">${tp.html}</div></div>
- <div class="sc"><div class="sch"><div><h2>Saúde da assinatura</h2></div></div>${sa}</div>
- <div class="sc"><div class="sch"><div><h2>Insights e alertas</h2><p>Derivados do dado do período, não texto fixo.</p></div></div>${al.map(([t,x])=>`<div class="al ${t}">${x}</div>`).join('')}</div>
- <div class="sc"><div class="sch"><div><h2>Saúde do dado</h2><p>Um painel que não mostra os próprios buracos mente com mais autoridade que uma planilha.</p></div></div>${sh}</div>`;
+  const rz=dv(mg,sp2); if(rz==null)return;
+  pbHtml=`<div class="al ${rz>=1?'o':'c'}"><b>Payback em 180 dias: ${rz.toFixed(2).replace('.',',')}x.</b>
+   ${R0(sp2)} de mídia trouxeram ${IN(cl)} clientes pagantes, que devolveram ${R$(dv(mg,cl))} de margem
+   por cliente contra um CAC de ${R$(dv(sp2,cl))}. ${rz<1?'<b>A mídia ainda não se paga</b> — os dois consertos moram em Aquisição (CAC ↓, não-pago ↑) e em Base (retenção ↑).':''}</div>`})();
+ const sh=(D.saude||[]).filter(p=>p.status!=='OK').map(p=>`<div class="al ${p.status==='ATRASADO'?'w':'c'}"><div><b>${p.fonte}</b> <span class="pl g">${p.tipo}</span> — ${p.status.toLowerCase()} · idade ${nf(+p.idade_horas,1)}h · SLA ${p.sla_horas}h</div></div>`).join('');
+ const mesNome=mes.mes?MSL[+String(mes.mes).slice(5,7)-1]:MSL[+MAX.slice(5,7)-1];
+
+ return `<div class="al o"><b>Esta tela é fixa no mês corrente (${mesNome})</b> — é a leitura de abrir o dia.
+   Os filtros da barra não se aplicam aqui; cada bloco tem a própria tela para investigar.</div>
+ ${bloco('1','Resultado','O negócio se paga? Caixa gerado ignora o CMV — o estoque já foi pago; a margem vigia o dia em que ele precisar de reposição.','resultado',
+  cdS('Faturamento do mês',R0(mes.fat_total),`meta ${R0(mes.fat_meta)} · ritmo ${PC(mes.pct_fat)}`)
+  +cdS('Caixa gerado',R0(cx),'fat − taxas − frete − mídia · sem CMV')
+  +cdS('Resultado (com CMV)',`<span style="color:${T.resultado>=0?'var(--vd)':'var(--vm)'}">${R0(T.resultado)}</span>`,'o mesmo, tirando o custo do produto')
+  +cdS('Ticket médio',R$(dv(T.faturamento,T.pedidos)),`${IN(T.pedidos)} pedidos no mês`),
+  `<div class="sch" style="margin-top:12px"><div><h2 style="font-size:13px">Quebra da meta — ${mesNome}</h2>
+   <p>“Deveria estar” = meta × dias decorridos. O MRR concentra no fim do mês (7 das 13 cobranças caem no dia 30/31).</p></div></div>${quebraMeta(mes)}`)}
+ ${bloco('2','Aquisição','Estamos comprando clientes bem — e quantos chegam de graça? A janela de CAC é a última semana fechada.','aquisicao',
+  cdS('Novos no mês',IN(mes.qtd_novos),`meta ${RT(mes.qtd_novos_meta)}`)
+  +cdS('CAC dos novos (7d)',R0(j.cac_novos),`meta ${R0(j.cac_meta)}`)
+  +cdS('% novos de canal não-pago',PC((pctNP||0)*100),`${IN(novNP)} de ${IN(novP+novNP)} · a tese da atenção barata`)
+  +cdS('Investido no mês',R0(mes.custo_total),`orçamento ${R0(mes.custo_meta_plano)}`))}
+ ${bloco('3','Amostras','O motor de amostra converte em cliente pagante?','amostras',
+  cdS('Amostras no mês',IN(mes.qtd_amostras),`meta ${R0(mes.amostra_meta)} em receita`)
+  +cdS('Conversão amostra → pagante',PC((convAm||0)*100),'histórico completo')
+  +cdS('Tempo até converter',t1?IN(t1.mediana_dias)+' dias':'—','mediana de quem converteu'))}
+ ${bloco('4','Base','O cliente fica? Renovação é o que conserta o payback.','base',
+  cdS('MRR do mês',R0(mes.mrr),`meta ${R0(mes.mrr_meta)} · ${PC(mes.pct_mrr)}`)
+  +cdS('Renovação do último ciclo',ult?PC(dv(ult.renovaram,ult.esperados)*100):'—',
+    ult?`${IN(ult.renovaram)} de ${IN(ult.esperados)} renovaram${ult.emCurso?' · ciclo em curso':''}`:'sem dado')
+  +cdS('Sumiram no ciclo',ult?IN(ult.esperados-ult.renovaram):'—',
+    ult?`${IN(ult.falha_pagamento)} falha pgto · ${IN(ult.cancelou)} cancelou · ${IN(ult.pausou)} pausou · ${IN(ult.sem_info)} sem info`:'')
+  +cdS('% receita recorrente',PC((dv(mes.mrr,mes.fat_total)||0)*100),'MRR ÷ faturamento do mês'))}
+ ${bloco('5','Jornada','O site converte o acesso que a aquisição traz?','jornada',
+  cdS('Sessões no mês',IN(sess),'medidas no site, todos os canais')
+  +cdS('% CR geral',PC(dv(100*T.pedidos,sess),2),'pedidos ÷ sessões · inclui amostra')
+  +cdS('Custo por sessão',R$(dv(spMes,sess)),'gasto do mês ÷ sessões'))}
+ <div class="sc"><div class="sch"><div><h2>Alertas</h2></div></div>${pbHtml}${sh||'<div class="al o">Todas as fontes de dado dentro do SLA.</div>'}</div>`;
 }
 
-function pgAtribuicao(){
- const j=jan(),jc=janC(j),A=agg(j,{canalView:true}),B=jc?agg(jc,{canalView:true}):null;
- const rows=Object.values(A.can).filter(c=>c.rec>0||c.spend>0).sort((a,b)=>b.rec-a.rec);
- // somar `cli` de cada canal contaria duas vezes quem comprou por dois canais — une os conjuntos
- const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},Z());
- uneKS(tot,rows);
- const cols=[
-  {k:'c',t:'Canal',l:1,fx:1,f:r=>`${r.canal}<br><span class="pl g">${GRUPO[r.canal]||'Outros'}</span>`,raw:r=>r.canal,tf:()=>'<b>Total</b>'},
-  {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
-  {k:'g',t:'Gasto',f:r=>r.spend>0?R0(r.spend):'<span class="na">sem dado</span>',raw:r=>r.spend,tf:t=>R0(t.spend)},
-  {k:'ro',t:'ROAS',tip:'Faturamento ÷ gasto. Em Amostras e MRR não existe gasto próprio, então mostra —.',
-   f:r=>{const v=dv(r.rec,r.spend);
-    return v==null?'<span class="na">—</span>':`<b style="color:${v>=2?'var(--vd)':v>=1?'var(--pt)':'var(--vm)'}">${RT(v)}</b>`},
-   raw:r=>dv(r.rec,r.spend)??-1,tf:t=>RT(dv(t.rec,t.spend))},
-  {k:'m',t:'Margem',f:r=>R0(r.marg),raw:r=>r.marg,tf:t=>R0(t.marg)},
-  {k:'p',t:'Compras',f:r=>IN(r.ped),raw:r=>r.ped,tf:t=>IN(t.ped)},
-  {k:'cl',t:'Clientes',f:r=>IN(r.cli),raw:r=>r.cli,tf:t=>IN(t.cli)},
-  {k:'cpa',t:'CPA',f:r=>R$(dv(r.spend,r.ped)),raw:r=>dv(r.spend,r.ped)??1e9,tf:t=>R$(dv(t.spend,t.ped))},
-  {k:'tm',t:'Ticket médio',f:r=>R$(dv(r.rec,r.ped)),raw:r=>dv(r.rec,r.ped)??0,tf:t=>R$(dv(t.rec,t.ped))},
-  {k:'n',t:'Novos clientes',f:r=>IN(r.p_novo_avulso+r.p_novo_assinatura),raw:r=>r.p_novo_avulso+r.p_novo_assinatura,tf:t=>IN(t.p_novo_avulso+t.p_novo_assinatura)},
-  {k:'rn',t:'Receita de novos',f:r=>R0(r.r_novo_avulso+r.r_novo_assinatura),raw:r=>r.r_novo_avulso+r.r_novo_assinatura,tf:t=>R0(t.r_novo_avulso+t.r_novo_assinatura)},
-  {k:'cn',t:'CAC NC',f:r=>R$(dv(r.spend,r.p_novo_avulso+r.p_novo_assinatura)),raw:r=>dv(r.spend,r.p_novo_avulso+r.p_novo_assinatura)??1e9,tf:t=>R$(dv(t.spend,t.p_novo_avulso+t.p_novo_assinatura))},
-  {k:'ncr',t:'NC-ROAS',f:r=>{const v=dv(r.r_novo_avulso+r.r_novo_assinatura,r.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>dv(r.r_novo_avulso+r.r_novo_assinatura,r.spend)??-1,tf:t=>RT(dv(t.r_novo_avulso+t.r_novo_assinatura,t.spend))},
-  {k:'na',t:'Novos assinantes',ce:1,f:r=>IN(r.p_novo_assinatura+r.p_antigo_inicio_assinatura),raw:r=>r.p_novo_assinatura+r.p_antigo_inicio_assinatura,tf:t=>IN(t.p_novo_assinatura+t.p_antigo_inicio_assinatura)},
-  {k:'ca',t:'CAC assinante',ce:1,f:r=>R$(dv(r.spend,r.p_novo_assinatura+r.p_antigo_inicio_assinatura)),raw:r=>dv(r.spend,r.p_novo_assinatura+r.p_antigo_inicio_assinatura)??1e9,tf:t=>R$(dv(t.spend,t.p_novo_assinatura+t.p_antigo_inicio_assinatura))},
-  {k:'tx',t:'% novos que assinam',ce:1,f:r=>PC(dv(r.p_novo_assinatura,r.p_novo_avulso+r.p_novo_assinatura)*100),raw:r=>dv(r.p_novo_assinatura,r.p_novo_avulso+r.p_novo_assinatura)??-1,tf:t=>PC(dv(t.p_novo_assinatura,t.p_novo_avulso+t.p_novo_assinatura)*100)},
-  {k:'ant',t:'Antigos',f:r=>IN(r.p_antigo_avulso+r.p_antigo_inicio_assinatura),raw:r=>r.p_antigo_avulso+r.p_antigo_inicio_assinatura,tf:t=>IN(t.p_antigo_avulso+t.p_antigo_inicio_assinatura)},
-  {k:'aia',t:'Antigos → assinatura',ce:1,f:r=>IN(r.p_antigo_inicio_assinatura),raw:r=>r.p_antigo_inicio_assinatura,tf:t=>IN(t.p_antigo_inicio_assinatura)},
-  {k:'cf',t:'Confiança',f:r=>`<span class="pl m">${IN(r.med)} med</span>${r.inf?` <span class="pl i">${IN(r.inf)} inf</span>`:''}`,raw:r=>r.med,tf:t=>`<span class="pl m">${IN(t.med)}</span>`}
- ];
- if(S.eixo==='aquisicao'){cols.splice(5,0,
-  {k:'rr',t:'Receita recorrente',ce:1,tip:'Renovação atribuída ao canal que ADQUIRIU o cliente. É visão de valor acumulado, não de performance.',f:r=>R0(r.r_recorrente),raw:r=>r.r_recorrente,tf:t=>R0(t.r_recorrente)},
-  {k:'rv',t:'Renovações',ce:1,f:r=>IN(r.p_recorrente),raw:r=>r.p_recorrente,tf:t=>IN(t.p_recorrente)})}
- const T=TB(cols,rows,tot,true);
- const avPlat=S.mod==='plataforma'?`<div class="al w"><b>Modelo Plataforma.</b> Os valores atribuídos pelas plataformas podem conter sobreposição e não devem ser somados como faturamento real. No período o Meta se atribui <b>${R0(A.plat_r)}</b> e <b>${IN(A.plat_c)}</b> compras — nosso modelo Síntese vê ${R0(A.can.meta?.rec||0)} no canal.</div>`:'';
- const avEixo=S.eixo==='aquisicao'
-  ?`<div class="al o"><b>Eixo: canal de aquisição.</b> A receita recorrente está incluída e atribuída ao canal que <b>originalmente adquiriu</b> o cliente. Leia como <b>valor acumulado</b>, não como performance de mídia do período.</div>`
-  :`<div class="al o"><b>Eixo: canal do pedido.</b> A receita recorrente está <b>excluída</b> — atribuir renovação a canal não faz sentido, o canal não causou a renovação. Para ver renovação por origem, troque o eixo para <b>canal de aquisição</b>.</div>`;
- return `${avisoBalde()}<div class="sc"><div class="gr g6">${(S.bal==='amostra'||S.bal==='mrr'
-   ?['rec','ped','tm','nov','nassin']
-   :['rec','spend','roas','cpa','ped','tm','nov','cacn','nassin','cacа']).map(k=>CD(k,A,B)).join('')}</div></div>
- ${avPlat}${avEixo}
- <div class="sc"><div class="sch"><div><h2>Atribuição por canal</h2>
-  <p>Clique na linha para aprofundar. Clique no cabeçalho para ordenar. Colunas em laranja são exclusivas da Cells.</p></div>
-  <input type="search" id="bq" placeholder="Buscar canal..." aria-label="Buscar canal" value="${S._q||''}"></div>
-  <div class="pn"><div class="pnh"><h3>Colunas</h3>${colToggle(cols)}</div>${T.html}</div></div>
- ${tabelaCampanha(A)}`;
-}
-
-// CAMPANHA DENTRO DO CANAL. Sem isto, canal de creator seria UMA linha chamada "creator" e nao
-// daria para comparar creator com creator. Com utm_campaign=nomedocreator, cada creator vira uma
-// linha aqui. Vale igual para email, whatsapp e parceria — qualquer canal que use utm_campaign.
-// utm_medium NAO serve para isso: core.bridge_order_session guarda source/campaign/content/term e
-// DESCARTA o medium, entao nome que va para o medium nunca chega no pedido.
-function tabelaCampanha(A){
- const rows=Object.values(A.cmp||{}).filter(r=>r.rec>0||r.ped>0)
-   .sort((a,b)=>b.rec-a.rec).slice(0,60);
- if(!rows.length) return '';
- const tot=rows.reduce((a,r)=>{for(const k in r)if(typeof r[k]==='number')a[k]=(a[k]||0)+r[k];return a},Z());
- uneKS(tot,rows);
- const T=TB([
-  {k:'ca',t:'Canal',l:1,fx:1,f:r=>`<span class="pl g">${r.canal}</span>`,raw:r=>r.canal,tf:()=>'<b>Total</b>'},
-  {k:'cp',t:'Campanha',l:1,f:r=>r.campanha==='(sem campanha)'?'<span class="na">(sem campanha)</span>':r.campanha,raw:r=>r.campanha},
-  {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec,tf:t=>R0(t.rec)},
-  {k:'p',t:'Compras',f:r=>IN(r.ped),raw:r=>r.ped,tf:t=>IN(t.ped)},
-  {k:'c',t:'Clientes',f:r=>IN(r.cli),raw:r=>r.cli,tf:t=>IN(t.cli)},
-  {k:'tm',t:'Ticket médio',f:r=>R$(dv(r.rec,r.ped)),raw:r=>dv(r.rec,r.ped)??0,tf:t=>R$(dv(t.rec,t.ped))},
-  {k:'n',t:'Novos',f:r=>IN(r.p_novo_avulso+r.p_novo_assinatura),raw:r=>r.p_novo_avulso+r.p_novo_assinatura,
-   tf:t=>IN(t.p_novo_avulso+t.p_novo_assinatura)},
-  {k:'m',t:'Margem',f:r=>R0(r.marg),raw:r=>r.marg,tf:t=>R0(t.marg)}
- ],rows,tot);
- return `<div class="sc"><div class="sch"><div><h2>Campanha dentro do canal</h2>
-  <p>O que veio no <code>utm_campaign</code> de cada pedido. É aqui que <b>creator aparece por nome</b> —
-  basta a UTM ser <code>utm_source=creator&amp;utm_campaign=nomedocreator</code>.
-  Sem gasto: canal orgânico e de parceria não tem custo coletado, então ROAS e CAC não aparecem.</p></div></div>
-  <div class="pn">${T.html}</div></div>`;
-}
-
-function pgTipoCliente(){
+/* ==================== AMOSTRAS — o motor de aquisição barata ==================== */
+// Amostra entra no faturamento, mas NUNCA e cliente pagante nem entra no CAC. O que se cobra dela
+// e CONVERSAO: virou pagante? em quanto tempo? a que custo por amostra?
+function pgAmostras(){
  const j=jan(),jc=janC(j),A=agg(j),B=jc?agg(jc):null;
- const cel=(c,B2)=>{const o=A.cat[c]||Z(), ob=B2?(B2.cat[c]||Z()):null;
-  return {cat:c,...o,_ant:ob}};
- const mk=(nome,cats,sub,tot)=>{
-  // idem: quem é novo em janeiro e recorrente em março não são dois clientes
-  const o=Z(); cats.forEach(c=>{const x=A.cat[c]||Z();for(const k in o)if(typeof x[k]==='number')o[k]+=x[k]});
-  uneKS(o,cats.map(c=>A.cat[c]).filter(Boolean));
-  const ob=B?(()=>{const z=Z();cats.forEach(c=>{const x=B.cat[c]||Z();for(const k in z)if(typeof x[k]==='number')z[k]+=x[k]});
-   return uneKS(z,cats.map(c=>B.cat[c]).filter(Boolean))})():null;
-  return {nome,...o,_ant:ob,_sub:sub,_tot:tot,_cats:cats}};
- const rows=[
-  mk('Amostra',['amostra']),
-  mk('Novos clientes',['novo_avulso','novo_assinatura']),
-  mk('Compra única',['novo_avulso'],1), mk('Assinatura',['novo_assinatura'],1),
-  mk('Clientes antigos',['antigo_avulso','antigo_inicio_assinatura']),
-  mk('Compra única',['antigo_avulso'],1), mk('Início de assinatura',['antigo_inicio_assinatura'],1),
-  mk('Assinantes recorrentes',['recorrente']),
-  mk('Total',ORD,0,1)
- ];
- const totRec=A.rec||1;
- const T=TB([
-  {k:'n',t:'Categoria',l:1,fx:1,f:r=>r.nome,raw:r=>r.nome},
-  {k:'r',t:'Faturamento',f:r=>R0(r.rec),raw:r=>r.rec},
-  {k:'pc',t:'% do faturamento',f:r=>PC(r.rec/totRec*100),raw:r=>r.rec/totRec},
-  {k:'cmp',t:'vs período anterior',f:r=>r._ant?dlt(r.rec,r._ant.rec)||'<span class="na">—</span>':'<span class="na">—</span>',raw:r=>r._ant?r.rec-r._ant.rec:0},
-  {k:'p',t:'Compras',f:r=>IN(r.ped),raw:r=>r.ped},
-  {k:'cl',t:'Clientes',f:r=>IN(r.cli),raw:r=>r.cli},
-  {k:'tm',t:'Ticket médio',f:r=>R$(dv(r.rec,r.ped)),raw:r=>dv(r.rec,r.ped)??0},
-  {k:'m',t:'Margem',f:r=>R0(r.marg),raw:r=>r.marg},
-  {k:'ro',t:'ROAS',tip:'Para assinantes recorrentes o ROAS corrente não é métrica válida — o gasto do mês não gerou a renovação.',
-   f:r=>{if(r._cats&&r._cats.length===1&&r._cats[0]==='recorrente')return '<span class="na">n/a</span>';
-    const v=dv(r.rec,A.spend);return v==null?'<span class="na">—</span>':RT(v)},raw:r=>r.rec}
- ],rows,null);
- // bloco de recorrentes
- const rc=A.cat.recorrente||Z();
- const blocoRec=`<div class="gr g6">
-  <div class="cd"><div class="k">Assinantes que renovaram</div><div class="v">${IN(rc.cli)}</div></div>
-  <div class="cd"><div class="k">Renovações</div><div class="v">${IN(rc.ped)}</div></div>
-  <div class="cd"><div class="k">Receita recorrente</div><div class="v">${R0(rc.rec)}</div></div>
-  <div class="cd"><div class="k">Ticket recorrente</div><div class="v">${R$(dv(rc.rec,rc.ped))}</div></div>
-  <div class="cd"><div class="k">Margem recorrente</div><div class="v">${R0(rc.marg)}</div></div></div>`;
- // conversões
- const nv=A.p_novo_avulso+A.p_novo_assinatura, ant=A.p_antigo_avulso+A.p_antigo_inicio_assinatura;
- const cv=[
-  ['Novos que assinam ÷ novos clientes',dv(A.p_novo_assinatura,nv)],
-  ['Antigos que iniciam assinatura ÷ antigos compradores',dv(A.p_antigo_inicio_assinatura,ant)],
-  ['Receita de antigos ÷ receita total',dv(A.r_antigo_avulso+A.r_antigo_inicio_assinatura,A.rec)],
-  ['Receita recorrente ÷ receita total',dv(A.r_recorrente,A.rec)],
-  ['Compra única que depois virou assinatura (histórico)',dv(+((D.jor.find(x=>x.e==='p1_para_assin')||{}).n||0),+((D.jor.find(x=>x.e==='p1_avulsa')||{}).n||1))]
- ];
- return `<div class="sc"><div class="gr g6">${['nov','nassin','antc','antia','renov','rrec'].map(k=>CD(k,A,B)).join('')}</div></div>
- <div class="sc"><div class="sch"><div><h2>Composição do faturamento por tipo de cliente</h2></div></div>
-  <div class="pn"><div class="pnb">${chartStack(serie([MIN,MAX],'mes'),ORD)}</div></div></div>
- <div class="sc"><div class="sch"><div><h2>Categorias</h2><p>Mutuamente exclusivas: um pedido cai em uma e só uma. Renovação nunca é contada como nova assinatura.</p></div></div>
-  <div class="pn">${T.html}</div></div>
- <div class="sc"><div class="sch"><div><h2>Assinantes recorrentes</h2><p>Aqui o ROAS corrente não é métrica — o gasto do mês não gerou a renovação.</p></div></div>${blocoRec}</div>
- <div class="sc"><div class="sch"><div><h2>Conversões</h2></div></div>
-  <div class="pn"><div class="pnb"><div class="fn">${cv.map(([n,v])=>`<div class="fnr">
-   <div class="fnb ${v!=null&&v>0?'lj':'g'}" style="width:${Math.max(52,(v||0)*260)}px">${v==null?'—':PC(v*100)}</div>
-   <div class="fnl">${n}</div></div>`).join('')}</div></div></div></div>`;
-}
-
-function pgMensal(){
+ const jr={}; (D.jor||[]).forEach(x=>jr[x.e]={n:+x.n,v:+x.v});
+ const amT=jr.am_total?.n||0, amAv=jr.am_avulso?.n||0, amAs=jr.am_assin?.n||0, amSem=jr.am_sem?.n||0;
+ const conv=dv(amAv+amAs,amT);
+ const t1=(D.tempo||[]).find(t=>+t.ord===1);
+ // custo por amostra: conjuntos onde amostra > aquisicao no periodo FECHADO — mesma regra da
+ // definicao "Mídia por amostra". Nao rateia conjunto misto; e aproximacao declarada.
+ const jf2=jf(j); let spAm=0,qAm=0;
+ const porCj={};
+ for(const r of (D.camp||[])){const d=String(r.dia).slice(0,10); if(!inP(d,jf2))continue;
+  const k=r.campanha+'|'+r.conjunto, o=porCj[k]||(porCj[k]={sp:0,am:0,aq:0});
+  o.sp+=(+r.spend||0); o.am+=(+r.ped_amostra||0); o.aq+=(+r.ped_aquisicao||0)}
+ for(const o of Object.values(porCj)){ if(o.am>o.aq&&o.am>0){spAm+=o.sp;qAm+=o.am} }
+ const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(dv(v,base)||0)*260)}px">${IN(v)}</div><div class="fnl">${n}${base?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
  const sm=serie([MIN,MAX],'mes');
- const ind=S.ind, m=M[ind]||M.rec;
- const mx=Math.max(...sm.map(d=>{const A={...Z(),...d};return m.g(A)||0}))||1;
- // "melhor mes" so pode sair de mes FECHADO — senao o mes em curso ganha ou perde por acidente
- const mxFechado=Math.max(...sm.filter(d=>d.k!==MESPARC).map(d=>{const A={...Z(),...d};return m.g(A)||0}),0);
- const bars=sm.map((d,i)=>{const A={...Z(),...d},v=m.g(A)||0,w=100/sm.length;
-  const parcial=d.k===MESPARC, best=!parcial&&v===mxFechado&&v>0;
-  return `<g><rect x="${i*w+w*.16}%" y="${100-v/mx*100}%" width="${w*.68}%" height="${v/mx*100}%"
-   fill="${best?'var(--lj)':'var(--pt)'}" ${parcial?'opacity=".42"':''}><title>${MSL[+d.k.slice(5,7)-1]}: ${m.f(v)}${parcial?` — PARCIAL, só até o dia ${DIACORTE}`:''}</title></rect></g>`}).join('');
- // média móvel 3 meses
- const vals=sm.map(d=>{const A={...Z(),...d};return m.g(A)||0});
- const mm=vals.map((_,i)=>i<2?null:(vals[i]+vals[i-1]+vals[i-2])/3);
- const lp=mm.map((v,i)=>v==null?null:`${(i+0.5)*100/sm.length},${100-v/mx*100}`).filter(Boolean).join(' ');
- const CATL=[['Total',ORD],['Amostra',['amostra']],['Novos clientes',['novo_avulso','novo_assinatura']],
-  ['— Compra única',['novo_avulso']],['— Assinatura',['novo_assinatura']],
-  ['Clientes antigos',['antigo_avulso','antigo_inicio_assinatura']],
-  ['— Compra única',['antigo_avulso']],['— Início de assinatura',['antigo_inicio_assinatura']],
-  ['Assinantes recorrentes',['recorrente']]];
- const meses=sm.map(d=>d.k);
- // mesma serie, mas com todo mes cortado no dia de hoje — base da comparacao honesta
- const smC=MESPARC?serie([MIN,MAX],'mes',DIACORTE):[];
- const piv=CATL.map(([nome,cats])=>{
-  const o={nome,_sub:nome.startsWith('—'),_tot:nome==='Total'};
-  let tt=0;
-  meses.forEach(mk2=>{const d=sm.find(x=>x.k===mk2)||{};
-   const v=cats.reduce((a,c)=>a+((d['r_'+c])||0),0); o[mk2]=v; tt+=v;
-   const dc=smC.find(x=>x.k===mk2); if(dc)o['_c'+mk2]=cats.reduce((a,c)=>a+((dc['r_'+c])||0),0)});
-  o.total=tt; return o});
- const mxCell=Math.max(...piv.filter(p=>!p._tot).flatMap(p=>meses.map(mk2=>p[mk2])));
- const cols=[{k:'n',t:'Categoria',l:1,fx:1,f:r=>r.nome,raw:r=>r.nome},
-  ...meses.map(mk2=>({k:mk2,t:MS[+mk2.slice(5,7)-1],f:r=>{const v=r[mk2];
-    if(!v)return '<span class="na">—</span>';
-    const int2=r._tot?0:Math.min(.5,v/mxCell*.5);
-    return `<span style="background:rgba(244,94,26,${int2});padding:2px 4px;border-radius:2px">${R0(v)}</span>`},
-    raw:r=>r[mk2]})),
-  {k:'tt',t:'Total do ano',f:r=>`<b>${R0(r.total)}</b>`,raw:r=>r.total},
-  // Se o ultimo mes esta em curso, comparar contra o mes anterior INTEIRO inventa queda.
-  // Corta os dois no mesmo dia. Foi esse erro que me fez dizer "junho 77, julho 72, caiu".
-  {k:'var',t:MESPARC===meses[meses.length-1]?`Variação (até dia ${DIACORTE}, nos dois)`:'Variação último mês',
-   f:r=>{const u=meses[meses.length-1],p=meses[meses.length-2];
-    const a=MESPARC===u?(r['_c'+u]||0):r[u], b=MESPARC===u?(r['_c'+p]||0):r[p];
-    return b?dlt(a,b):'<span class="na">—</span>'},
-   raw:r=>{const u=meses[meses.length-1];return MESPARC===u?(r['_c'+u]||0):r[u]}},
-  // media so de mes FECHADO — incluir o mes em curso puxa a media para baixo sem motivo
-  {k:'mm',t:'Média 3 meses fechados',f:r=>{const l=meses.filter(x=>x!==MESPARC).slice(-3).map(x=>r[x]);
-    return l.length?R0(l.reduce((a,b)=>a+b,0)/l.length):'<span class="na">—</span>'},raw:r=>0}];
- const T=TB(cols,piv,null);
- // CAT e um mapa fixo das 6 categorias. Se a view emitir uma 7a, o dropdown a oferece e o
- // lookup direto quebrava a tela inteira — cai no proprio codigo da categoria em vez de estourar.
- const fAtivo=[S.can&&('canal '+S.can),S.gru&&('grupo '+S.gru),S.cat&&('tipo '+(CAT[S.cat]?.n||S.cat))].filter(Boolean).join(' · ');
- return `<div class="al o">Esta tela mostra <b>todo o histórico por desenho</b> (desde ${DT(MIN)}) — o seletor de período não se aplica aqui.
-  Canal, grupo e tipo de cliente <b>sim</b>${fAtivo?`: filtrando por ${fAtivo}`:''}.</div>
-  ${MESPARC?`<div class="al w"><b>${MSL[+MESPARC.slice(5,7)-1]} ainda não fechou</b> — os dados vão só até o dia ${DIACORTE}.
-   A barra dele está esmaecida, não disputa "melhor mês" e não entra na média. A coluna de variação corta
-   os dois meses no <b>mesmo dia</b>, porque comparar mês em curso com mês inteiro inventa queda:
-   a cobrança de assinatura se concentra no fim do mês (7 das 13 do clube caem no dia 30/31).</div>`:''}
-  <div class="sc"><div class="sch"><div><h2>Evolução mensal</h2><p>Barra laranja marca o melhor mês <b>fechado</b>. A linha é a média móvel de três meses.</p></div>
-  <div class="fg"><label for="fi">Indicador</label><select id="fi">${Object.entries(M).map(([k,v])=>`<option value="${k}" ${k===ind?'selected':''}>${v.n}</option>`).join('')}</select></div></div>
-  <div class="pn"><div class="pnb">
-   <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:210px;display:block" role="img" aria-label="Evolução mensal do indicador">${bars}
-    <polyline points="${lp}" fill="none" stroke="#C9C9C4" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-dasharray="3 2"/></svg>
-   <div style="display:flex;margin-top:5px">${sm.map(d=>{const A={...Z(),...d};const pc=d.k===MESPARC;
-     return `<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;${pc?'color:var(--t3)':''}">${m.f(m.g(A))}</div><div style="font-size:10px;color:var(--t3)">${MS[+d.k.slice(5,7)-1]}${pc?'<br><span style="font-size:9px;color:var(--pt);font-weight:700">PARCIAL</span>':''}</div></div>`}).join('')}</div>
-   <div class="lgd"><span><i style="background:var(--pt)"></i>${m.n}</span><span><i style="background:var(--lj)"></i>melhor mês <b>fechado</b></span><span><i style="background:#C9C9C4"></i>média móvel 3 meses</span>${MESPARC?'<span><i style="background:var(--pt);opacity:.42"></i>mês em curso</span>':''}</div>
-  </div></div></div>
- <div class="sc"><div class="sch"><div><h2>Faturamento por categoria e mês</h2><p>Intensidade do laranja proporcional ao valor da célula.</p></div></div>
-  <div class="pn">${T.html}</div></div>`;
+ const tbl=sm.slice(-12).reverse().map(d=>`<tr><td class="l">${MS[+d.k.slice(5,7)-1]}/${d.k.slice(2,4)}</td>
+   <td>${IN(d.p_amostra)}</td><td>${R0(d.r_amostra)}</td></tr>`).join('');
+ return `<div class="sc"><div class="gr g6">
+   ${CD('amos',A,B)}
+   ${cdS('Receita de amostra',R0(A.r_amostra),'entra no faturamento, nunca no CAC')}
+   ${cdS('Custo por amostra',R$(dv(spAm,qAm)),`conjuntos de amostra no período fechado (${IN(qAm)} amostras)`)}
+   ${cdS('Conversão amostra → pagante',PC((conv||0)*100),'histórico completo')}
+   ${cdS('Tempo até converter',t1?IN(t1.mediana_dias)+' dias':'—',t1?`mediana · P25 ${IN(t1.p25_dias)}d · P75 ${IN(t1.p75_dias)}d`:'')}
+  </div></div>
+ <div class="sc"><div class="sch"><div><h2>Funil da amostra — histórico completo</h2>
+  <p>Quem recebeu amostra alguma vez, e o que fez depois. A conversão é a razão de existir do motor.</p></div></div>
+  <div class="pn"><div class="pnb"><div class="fn">
+   ${fnB(amT,'receberam amostra')}
+   ${fnB(amAv,'viraram cliente — compra única',amT)}
+   ${fnB(amAs,'viraram cliente — assinatura',amT)}
+   ${fnB(amSem,'nunca compraram',amT)}
+  </div></div></div></div>
+ <div class="sc"><div class="sch"><div><h2>Amostras por mês</h2></div></div>
+  <div class="tw"><table><thead><tr><th class="l">Mês</th><th>Amostras</th><th>Receita</th></tr></thead>
+  <tbody>${tbl||'<tr><td colspan="3" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
+ <div class="sc"><div class="al w"><b>Custo por amostra é métrica de conjunto, não de balde.</b> O mesmo
+  conjunto entrega amostra e compra com um orçamento só — o número acima soma apenas conjuntos onde a
+  amostra domina (amostras &gt; aquisições). O detalhe por conjunto está em <b>Canais e campanhas</b>,
+  coluna <i>Cost/Sample</i>.</div></div>`;
 }
 
+/* ==================== BASE — o cliente fica? ==================== */
+// A tela que responde "quem nao pagou: falha ou cancelamento?" (pedido do Gabriel, 30/08).
+// Fonte do status: core.assinatura_status_manual (auditoria manual 19/08) — o que ela nao cobre
+// aparece como SEM INFO, de proposito: e o tamanho do buraco do Appstle, nao um numero bonito.
+function pgBase(){
+ const j=jan(),jc=janC(j),A=agg(j),B=jc?agg(jc):null;
+ const jr={}; (D.jor||[]).forEach(x=>jr[x.e]={n:+x.n,v:+x.v});
+ const cic=cicloLinhas();
+ const linhas=cic.slice(-8).reverse().map(r=>{
+  const p=dv(r.renovaram,r.esperados);
+  return `<tr${r.emCurso?' class="sub"':''}><td class="l">${MS[+r.mes.slice(5,7)-1]}/${r.mes.slice(2,4)} → ${MS[(+r.mes.slice(5,7))%12]}${r.emCurso?' <span class="t3">em curso</span>':''}</td>
+   <td>${IN(r.esperados)}</td><td>${IN(r.renovaram)}</td>
+   <td style="color:${p>=.8?'var(--vd)':p>=.6?'var(--lj)':'var(--vm)'};font-weight:650">${PC((p||0)*100)}</td>
+   <td>${IN(r.falha_pagamento)}</td><td>${IN(r.cancelou)}</td><td>${IN(r.pausou)}</td>
+   <td>${IN(r.ciclo_longo)}</td><td>${IN(r.sem_info)}</td><td>${R0(+r.valor_sumiu)}</td></tr>`}).join('');
+ // detalhe nominal da transicao mais recente exibivel
+ const ult=cic[cic.length-1];
+ const CHIP={cancelado:'r',pausado:'g',cartao_revogado:'i',cartao_recusado:'i',plano_45d:'g',sem_info:'g'};
+ const NOME={cancelado:'cancelou',pausado:'pausou',cartao_revogado:'falha — cartão revogado',
+  cartao_recusado:'falha — cartão recusado',plano_45d:'ciclo de 45d',sem_info:'sem info'};
+ const det=(D.assinSumiu||[]).filter(r=>ult&&String(r.mes).slice(0,10)===ult.mes)
+  .map(r=>`<tr><td class="l">${r.email}</td>
+   <td class="l"><span class="pl ${CHIP[r.status]||'g'}">${NOME[r.status]||r.status}</span></td>
+   <td class="l" style="font-weight:400;color:var(--t2)">${r.detalhe||'—'}</td>
+   <td>${R0(+r.valor_mes)}</td><td>${DT(r.ultima_cobranca)}</td></tr>`).join('');
+ const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(dv(v,base)||0)*260)}px">${IN(v)}</div><div class="fnl">${n}${base!=null?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
+ const tempos=(D.tempo||[]).filter(t=>+t.ord>=2).map(t=>`<tr><td class="l">${t.etapa}</td>
+   <td>${IN(t.pessoas)}</td><td>${IN(t.nao_deram_o_passo)}</td><td>${IN(t.mediana_dias)}d</td>
+   <td class="t3">${IN(t.p25_dias)}–${IN(t.p75_dias)}d</td></tr>`).join('');
+ return `<div class="sc"><div class="gr g6">${['renov','rrec','pcrec','antc','txant'].map(k=>CD(k,A,B)).join('')}</div></div>
+ <div class="sc"><div class="sch"><div><h2>O que aconteceu com as assinaturas — ciclo a ciclo</h2>
+  <p>Quem pagou assinatura num mês era esperado no seguinte. <b>Renovou, falhou o pagamento,
+  cancelou ou pausou?</b> O que a auditoria manual não cobre aparece como <b>sem info</b> — esse é o
+  tamanho do buraco do Appstle, e escondê-lo seria mentir.</p></div></div>
+  <div class="tw"><table><thead><tr><th class="l">Ciclo</th><th>Esperados</th><th>Renovaram</th><th>%</th>
+   <th>Falha pgto</th><th>Cancelou</th><th>Pausou</th><th>Ciclo 45d</th><th>Sem info</th><th>R$ que sumiu</th></tr></thead>
+   <tbody>${linhas||'<tr><td colspan="10" class="emp">Sem dados de ciclo.</td></tr>'}</tbody></table></div></div>
+ ${ult?`<div class="sc"><div class="sch"><div><h2>Quem sumiu no ciclo ${MS[+ult.mes.slice(5,7)-1]} → ${MS[(+ult.mes.slice(5,7))%12]}${ult.emCurso?' (em curso)':''}</h2>
+  <p>Nominal, para agir: recuperar cartão, perguntar o motivo, reativar pausa.</p></div></div>
+  <div class="tw"><table><thead><tr><th class="l">E-mail</th><th class="l">O que houve</th>
+   <th class="l">Detalhe</th><th>Valor/mês</th><th>Última cobrança</th></tr></thead>
+   <tbody>${det||'<tr><td colspan="5" class="emp">Ninguém sumiu neste ciclo.</td></tr>'}</tbody></table></div></div>`:''}
+ <div class="sc"><div class="sch"><div><h2>Curva de renovação — coortes maduras</h2>
+  <p>De quem iniciou assinatura (e teve tempo), quantos chegaram à 1ª, 2ª e 3ª cobrança.</p></div></div>
+  <div class="pn"><div class="pnb"><div class="fn">
+   ${fnB(jr.assin_ren1?.n,'chegaram à 1ª renovação',jr.assin_base1?.n)}
+   ${fnB(jr.assin_ren2?.n,'chegaram à 2ª renovação',jr.assin_base2?.n)}
+   ${fnB(jr.assin_ren3?.n,'chegaram à 3ª renovação',jr.assin_base3?.n)}
+  </div></div></div></div>
+ <div class="sc"><div class="sch"><div><h2>Compra única — recompra</h2></div></div>
+  <div class="pn"><div class="pnb"><div class="fn">
+   ${fnB(jr.p1_avulsa?.n,'1ª compra avulsa')}
+   ${fnB(jr.p1_2a_avulsa?.n,'fizeram 2ª compra avulsa',jr.p1_avulsa?.n)}
+   ${fnB(jr.p1_para_assin?.n,'viraram assinatura depois',jr.p1_avulsa?.n)}
+   ${fnB(jr.p1_sem_recompra?.n,'nunca recompraram',jr.p1_avulsa?.n)}
+  </div></div></div></div>
+ <div class="sc"><div class="sch"><div><h2>Tempo entre etapas</h2>
+  <p>Mediana, não média — a distribuição tem cauda longa. Diz QUANDO agir em quem não recomprou.</p></div></div>
+  <div class="tw"><table><thead><tr><th class="l">Etapa</th><th>Deram o passo</th><th>Não deram</th>
+   <th>Mediana</th><th>P25–P75</th></tr></thead><tbody>${tempos||'<tr><td colspan="5" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
+ <div class="sc"><div class="al w"><b>O status de quem sumiu vem de auditoria manual</b>
+  (<code>core.assinatura_status_manual</code>, 19/08) — a API do Appstle está bloqueada pelo plano.
+  Enquanto a fonte automática não existir, o balde “sem info” é o KPI mais importante desta tela:
+  cada linha resolvida ali vira falha recuperável ou churn de verdade.</div>
+  ${jr.falha?`<div class="al c"><b>${IN(jr.falha.n)} cobranças do CellsClub (Woo) falharam</b> — ${R0(jr.falha.v)} não cobrados.
+   ${IN(jr.voltou_apos_falha?.n)} assinantes que pularam um mês voltaram a pagar depois — falha de cartão se recupera, cancelamento não.</div>`:''}</div>`;
+}
+
+/* ==================== JORNADA — o site converte? ==================== */
+// % CR e ticket POR PDP, juntos (regra do Gabriel, 30/08): a escada 1/3/6 pode subir CR derrubando
+// ticket — so o produto dos dois (R$/sessao) compara PDPs de verdade.
+function pgJornada(){
+ const j=jan();
+ const P=(D.pdp||[]).filter(r=>inP(String(r.dia).slice(0,10),j));
+ let sess=0,nv=0; for(const r of (D.sess||[])){const d=String(r.dia).slice(0,10);
+  if(inP(d,j)){sess+=(+r.sessoes||0);nv+=(+r.nv||0)}}
+ let sp2=0; for(const s of spend){if(inP(s.dia,j))sp2+=(+s.custo||0)}
+ let ped=0; for(const r of dias){if(inP(r.dia,j))ped+=r.pedidos}
+ const porP={};
+ for(const r of P){const o=porP[r.pdp]||(porP[r.pdp]={pdp:r.pdp,sessoes:0,pedidos:0,pagos:0,receita:0});
+  o.sessoes+=(+r.sessoes||0);o.pedidos+=(+r.pedidos||0);o.pagos+=(+r.pedidos_pagos||0);o.receita+=(+r.receita||0)}
+ const rows=Object.values(porP).filter(r=>r.sessoes>=10).sort((a,b)=>b.sessoes-a.sessoes).slice(0,25);
+ const tot=rows.reduce((a,r)=>{a.sessoes+=r.sessoes;a.pedidos+=r.pedidos;a.pagos+=r.pagos;a.receita+=r.receita;return a},{sessoes:0,pedidos:0,pagos:0,receita:0});
+ const T=TB([
+  {k:'p',t:'PDP',l:1,fx:1,f:r=>r.pdp==='kit-descoberta'?`${r.pdp} <span class="pl i">amostra</span>`:r.pdp,raw:r=>r.pdp,tf:()=>'<b>Total</b>'},
+  {k:'s',t:'Sessões',f:r=>IN(r.sessoes),raw:r=>r.sessoes,tf:t=>IN(t.sessoes)},
+  {k:'pe',t:'Pedidos',f:r=>IN(r.pedidos),raw:r=>r.pedidos,tf:t=>IN(t.pedidos)},
+  {k:'cr',t:'% CR',tip:'Pedidos ÷ sessões que viram a PDP. Sessão que viu duas PDPs conta nas duas.',
+   f:r=>{const v=dv(100*r.pedidos,r.sessoes);return v==null?'—':`<b>${PC(v,2)}</b>`},raw:r=>dv(100*r.pedidos,r.sessoes)??-1,tf:t=>PC(dv(100*t.pedidos,t.sessoes),2)},
+  {k:'pg2',t:'Pedidos pagos',tip:'Sem amostra.',f:r=>IN(r.pagos),raw:r=>r.pagos,tf:t=>IN(t.pagos)},
+  {k:'crp',t:'% CR paga',f:r=>PC(dv(100*r.pagos,r.sessoes),2),raw:r=>dv(100*r.pagos,r.sessoes)??-1,tf:t=>PC(dv(100*t.pagos,t.sessoes),2)},
+  {k:'r',t:'Receita',f:r=>R0(r.receita),raw:r=>r.receita,tf:t=>R0(t.receita)},
+  {k:'tm',t:'Ticket',tip:'Receita ÷ pedidos das sessões que viram a PDP.',f:r=>R$(dv(r.receita,r.pedidos)),raw:r=>dv(r.receita,r.pedidos)??0,tf:t=>R$(dv(t.receita,t.pedidos))},
+  {k:'rps',t:'R$ / sessão',tip:'CR × ticket — o desempate entre PDPs.',ce:1,
+   f:r=>`<b>${R$(dv(r.receita,r.sessoes))}</b>`,raw:r=>dv(r.receita,r.sessoes)??0,tf:t=>R$(dv(t.receita,t.sessoes))}
+ ],rows,tot);
+ return `<div class="sc"><div class="gr g6">
+   ${cdS('Sessões',IN(sess),'medidas no site, todos os canais')}
+   ${cdS('% CR geral',PC(dv(100*ped,sess),2),`${IN(ped)} pedidos ÷ sessões · inclui amostra`)}
+   ${cdS('Custo por sessão',R$(dv(sp2,sess)),'gasto de mídia ÷ todas as sessões')}
+   ${cdS('% visitantes novos',PC(dv(100*nv,sess)),'sessão que é a 1ª do aparelho na base')}
+  </div></div>
+ <div class="sc"><div class="sch"><div><h2>Por PDP — % CR e ticket, juntos</h2>
+  <p>CR alto com ticket baixo (ou o contrário) engana — <b>R$ por sessão</b> é o produto dos dois e
+  decide qual página merece o tráfego. Pedido é creditado à sessão que <b>viu</b> a PDP.</p></div></div>
+  <div class="pn">${T.html}</div></div>
+ <div class="sc"><div class="al w"><b>Cobertura desde 2026</b> — sessões e PDP não existem para 2025.
+  Sessão que visitou mais de uma PDP conta em todas (por isso a soma das linhas passa do total de
+  pedidos do período). PDPs com menos de 10 sessões ficam fora da tabela.</div>
+  <div class="al o"><b>kit-descoberta é a PDP da amostra</b> — o CR dela mede o funil de amostra
+  (pedidos pagos ≈ 0 é o esperado); a conversão em cliente pagante está na tela Amostras.</div></div>`;
+}
 /* ==================== RESULTADO — DRE de contribuicao ==================== */
 // Pedido do Gabriel em 08/08: "uma tabela sempre tipo: gasto total; custo produto (envio+cmv);
 // faturamento --> o resultado liquido real. isso sera bom inclusive para ver descontos".
@@ -1104,16 +984,20 @@ function pgResultado(){
  const T=Object.fromEntries(K.map(k=>[k,R.reduce((a,r)=>a+(+r[k]||0),0)]));
  const pf=v=>T.faturamento?PC(100*v/T.faturamento):'—';
 
+ const cx=caixaGerado(T);
  const cds=`<div class="gr g6">
   <div class="cd"><div class="k">Faturamento</div><div class="v">${R0(T.faturamento)}</div>
    <div class="c f">${IN(T.pedidos)} pedidos</div></div>
+  <div class="cd"><div class="k"><span class="h" title="Faturamento − taxas − frete − mídia, SEM tirar o CMV. O estoque já foi pago: vender do estoque existente gera caixa mesmo com margem contábil ruim. Vale até o estoque precisar de reposição.">Caixa gerado (sem CMV)</span></div>
+   <div class="v" style="color:${cx>=0?'var(--vd)':'var(--vm)'}">${R0(cx)}</div>
+   <div class="c f">a régua de hoje: estoque já pago</div></div>
   <div class="cd"><div class="k">Margem de contribuição</div><div class="v">${R0(T.margem_contribuicao)}</div>
-   <div class="c f">${pf(T.margem_contribuicao)} do faturamento</div></div>
+   <div class="c f">${pf(T.margem_contribuicao)} do faturamento · antes da mídia</div></div>
   <div class="cd"><div class="k">Mídia</div><div class="v">${R0(T.midia)}</div>
    <div class="c f">${pf(T.midia)} do faturamento</div></div>
-  <div class="cd"><div class="k">Resultado</div>
+  <div class="cd"><div class="k">Resultado (com CMV)</div>
    <div class="v" style="color:${T.resultado>=0?'var(--ok)':'var(--er)'}">${R0(T.resultado)}</div>
-   <div class="c f">antes de custo fixo</div></div></div>`;
+   <div class="c f">a régua de quando o estoque acabar</div></div></div>`;
 
  const L=(n,v,sinal,forte,dica)=>`<tr${forte?' class="tot"':''}>
    <td class="l fx">${sinal||''} ${n}${dica?` <span class="t3" title="${dica}">ⓘ</span>`:''}</td>
@@ -1138,6 +1022,8 @@ function pgResultado(){
   ${L('MARGEM DE CONTRIBUIÇÃO',T.margem_contribuicao,'=','1')}
   ${L('Mídia',-T.midia,'(−)','','Meta e WhatsApp por API. Google Ads não tem custo coletado.')}
   ${L('RESULTADO',T.resultado,'=','1')}
+  ${L('CMV de volta',T.cmv,'(+)','','O estoque já foi pago — o CMV não é saída de caixa deste período.')}
+  ${L('CAIXA GERADO',cx,'=','1','Faturamento − taxas − frete − mídia. A régua de hoje, enquanto se vende do estoque existente. Quando ele precisar de reposição, quem manda volta a ser o RESULTADO.')}
  </tbody></table></div>`;
 
  // serie mensal
@@ -1149,7 +1035,7 @@ function pgResultado(){
    <th style="text-align:right">Faturamento</th><th style="text-align:right">Descontos</th>
    <th style="text-align:right">CMV</th><th style="text-align:right">Taxas</th>
    <th style="text-align:right">Frete</th><th style="text-align:right">Margem contrib.</th>
-   <th style="text-align:right">Mídia</th><th style="text-align:right">Resultado</th></tr></thead><tbody>
+   <th style="text-align:right">Mídia</th><th style="text-align:right">Caixa gerado</th><th style="text-align:right">Resultado</th></tr></thead><tbody>
   ${meses.map(([k,o])=>`<tr><td class="l fx">${k}</td>
     <td style="text-align:right">${R0(o.faturamento)}</td>
     <td style="text-align:right" class="t3">${R0(o.descontos)}</td>
@@ -1158,6 +1044,7 @@ function pgResultado(){
     <td style="text-align:right" class="t3">${R0(o.frete_liquido)}</td>
     <td style="text-align:right">${R0(o.margem_contribuicao)}</td>
     <td style="text-align:right" class="t3">${R0(o.midia)}</td>
+    <td style="text-align:right;font-weight:650;color:${caixaGerado(o)>=0?'var(--vd)':'var(--vm)'}">${R0(caixaGerado(o))}</td>
     <td style="text-align:right;font-weight:650;color:${o.resultado>=0?'var(--ok)':'var(--er)'}">${R0(o.resultado)}</td>
     </tr>`).join('')}
  </tbody></table></div>`;
@@ -1435,101 +1322,6 @@ function pgCanais(){
   não tem custo coletado e canal orgânico não tem custo nenhum. Onde não há gasto, ROAS, CPA e CAC
   aparecem como <b>—</b>, nunca como zero.</div></div>`;
 }
-
-/* ==================== MATRIZ — balde x métrica (09/08/2026) ==================== */
-// Pedido do Gabriel: "as colunas vao ser TOTAL | COMPRAS | MRR | AMOSTRAS... dps outro embaixo que
-// separa COMPRAS TOTAIS | COMPRAS NOVOS | ASSINATURAS NOVOS | COMPRAS RECORRENTES | ASSINATURAS
-// RECORRENTES. quero conseguir fazer isso por periodo."
-//
-// A tela NAO respeita o filtro de balde da barra: ela mostra os baldes lado a lado, que e o ponto.
-// Respeita periodo, canal e modelo de atribuicao.
-//
-// `cli` de uma coluna que soma categorias e a UNIAO dos conjuntos, nunca a soma das contagens —
-// quem comprou avulso em julho e assinou em agosto e UMA pessoa. Por isso uneKS em toda coluna
-// composta, e por isso TOTAL nao e a soma horizontal de clientes.
-function pgMatriz(){
- const j=jan(), jc=janC(j);
- const A=agg(j), B=jc?agg(jc):null;
-
- // uma coluna = um conjunto de categorias, agregado com uniao de identidades
- const col=(X,cats)=>{
-  const o=Z(); if(!X)return o;
-  cats.forEach(c=>{const x=X.cat[c]; if(x)for(const k in o)if(typeof o[k]==='number')o[k]+=(x[k]||0)});
-  return uneKS(o,cats.map(c=>X.cat[c]).filter(Boolean));
- };
- const COMPRAS=['novo_avulso','antigo_avulso','novo_assinatura','antigo_inicio_assinatura'];
- // `g:1` = a coluna tem denominador de gasto. O gasto e da CONTA e nao se divide por balde (o mesmo
- // conjunto entrega amostra e compra com um orcamento so), entao ele aparece em TOTAL e em Compras —
- // o mesmo valor, duas leituras — e nunca em MRR ou Amostras, onde dividir seria inventar.
- const B1=[
-  ['TOTAL',    ORD,           1],
-  ['Compras',  COMPRAS,       1],
-  ['MRR',      ['recorrente'], 0],
-  ['Amostras', ['amostra'],    0]
- ];
- const B2=[
-  ['Compras totais',        COMPRAS,                    1],
-  ['Compras novos',         ['novo_avulso'],            0],
-  ['Assinaturas novos',     ['novo_assinatura'],        0],
-  ['Compras recorrentes',   ['antigo_avulso'],          0],
-  ['Assinaturas recorrentes',['antigo_inicio_assinatura'],0]
- ];
- // linhas da matriz. `g` recebe a coluna agregada; `gasto` so existe na conta, nunca por balde.
- const LIN=[
-  {n:'Faturamento',   f:R0,  g:o=>o.rec},
-  {n:'% do total',    f:v=>PC(v), g:(o,t)=>dv(o.rec,t.rec)*100, cinza:1},
-  {n:'Compras',       f:IN,  g:o=>o.ped},
-  {n:'Clientes',      f:IN,  g:o=>o.cli},
-  {n:'Ticket médio',  f:R$,  g:o=>dv(o.rec,o.ped)},
-  {n:'Receita/cliente',f:R$, g:o=>dv(o.rec,o.cli)},
-  {n:'Margem',        f:R0,  g:o=>o.marg},
-  {n:'% margem',      f:v=>PC(v), g:o=>dv(o.marg,o.rec)*100, cinza:1},
-  // so nas colunas com denominador. Onde nao ha, a celula fica "—" em vez de zero.
-  {n:'Gasto de mídia', f:R0,  g:o=>A.spend,                       custo:1},
-  {n:'ROAS',           f:RT,  g:o=>dv(o.rec,A.spend),             custo:1},
-  {n:'CPA',            f:R$,  g:o=>dv(A.spend,o.ped),             custo:1},
-  {n:'CAC de novo',    f:R$,  g:o=>dv(A.spend,o.p_novo_avulso+o.p_novo_assinatura), custo:1},
-  {n:'Margem por real',f:RT,  g:o=>dv(o.marg,A.spend),            custo:1}
- ];
- const tabela=(defs,titulo,nota)=>{
-  const cols=defs.map(([n,c,g])=>({n,g,a:col(A,c),b:B?col(B,c):null}));
-  const tot=cols[0].a;
-  const th=cols.map(c=>`<th style="text-align:right">${c.n}</th>`).join('');
-  const tb=LIN.map(l=>`<tr${l.custo?' class="sub"':''}><td class="l fx${l.cinza?' t3':''}">${l.n}</td>`+cols.map(c=>{
-     if(l.custo&&!c.g) return '<td style="text-align:right" class="t3">—</td>';
-     const v=l.g(c.a,tot), b=c.b?l.g(c.b,cols[0].b||tot):null;
-     const d=(b!=null&&isFinite(b)&&b!==0&&!l.cinza)?`<div class="c" style="font-size:10.5px">${dlt(v,b)}</div>`:'';
-     return `<td style="text-align:right" class="${l.cinza?'t3':''}">${l.f(v)}${d}</td>`}).join('')+'</tr>').join('');
-  return `<div class="sc"><div class="sch"><div><h2>${titulo}</h2><p>${nota}</p></div></div>
-   <div class="tw"><table><thead><tr><th class="l fx">Métrica</th>${th}</tr></thead>
-   <tbody>${tb}</tbody></table></div></div>`;
- };
-
- // manchete: a CONTA, com gasto — que so faz sentido aqui, nunca por balde
- const conta=col(A,COMPRAS), contaB=B?col(B,COMPRAS):null;
- const nov=o=>o.p_novo_avulso+o.p_novo_assinatura;
- const cd=(t,v,b,inv,nota)=>`<div class="cd"><div class="k">${t}</div><div class="v">${v}</div>
-   <div class="c">${b||''}${nota?` <span class="f">${nota}</span>`:''}</div></div>`;
- const cards=`<div class="gr g6">
-  ${cd('Faturamento da conta',R0(conta.rec),contaB?dlt(conta.rec,contaB.rec):'',0,'novos + recompra + novos assinantes')}
-  ${cd('ROAS da conta',RT(dv(conta.rec,A.spend)),contaB&&B?dlt(dv(conta.rec,A.spend),dv(contaB.rec,B.spend)):'',0,'sobre o gasto total')}
-  ${cd('CAC dos novos',R0(dv(A.spend,nov(conta))),contaB&&B?dltInv(dv(A.spend,nov(conta)),dv(B.spend,nov(contaB))):'',1,IN(nov(conta))+' clientes novos')}
-  ${cd('Investido',R0(A.spend),B?dlt(A.spend,B.spend):'',0,'Meta e WhatsApp por API')}
- </div>`;
-
- return `${cards}
- ${tabela(B1,'Por balde','Amostra e MRR entram no faturamento total, mas nunca no ROAS nem no CAC — por isso a manchete acima usa só Compras.')}
- ${tabela(B2,'Compras, por tipo de cliente','As quatro categorias que formam A CONTA. Somadas, dão a coluna Compras da tabela de cima.')}
- <div class="sc"><div class="al o"><b>Clientes não somam na horizontal.</b> Quem comprou avulso e
-  assinou no mesmo período é <b>uma</b> pessoa: cada coluna é a união das identidades, não a soma
-  das contagens. Por isso TOTAL é menor que a soma das colunas.</div>
-  <div class="al w"><b>Gasto não se divide por balde.</b> O mesmo conjunto entrega amostra e compra
-  com um orçamento só — separar exigiria ratear, e ratear pelo resultado é circular. Por isso o gasto
-  aparece <b>inteiro</b> em TOTAL e em Compras (o mesmo valor, duas leituras) e como <b>—</b> em MRR
-  e Amostras. <b>ROAS da conta é a linha da coluna Compras</b>; a de TOTAL inclui amostra e renovação
-  no numerador e serve só para dimensionar, não para decidir mídia.</div></div>`;
-}
-
 function pgDefinicoes(){
  const F=[
   ['ROAS','Faturamento atribuído ÷ gasto.','receita ÷ gasto','core.vw_app_pedido + vw_mvp_custo_dia','Denominador zero mostra —, nunca zero nem infinito.'],
@@ -1549,7 +1341,11 @@ function pgDefinicoes(){
   ['Google pago × Google orgânico','Separa clique de anúncio de busca orgânica e listagem grátis do Shopping.','gclid real no pedido OU na sessão de aquisição → google_ads; senão google_organico','core.vw_pedido_google_pago','O utm_source NÃO separa: o sufixo `g` que o feed do Merchant Center cola na URL serve listagem grátis e Shopping pago igualmente. gclid só existe em clique pago. Filtra gclid falso (havia 163 sessões com o literal LIVEgc, um único valor repetido). Usa o gclid do pedido e o da sessão porque cada um sozinho subconta.'],
   ['Tempo entre etapas','Dias entre um passo da jornada e o seguinte.','mediana e quartis dos dias entre os dois eventos','core.vw_tempo_entre_etapas','Mediana, não média: a distribuição tem cauda longa. Conta só quem completou a transição — a coluna "Não deram" mostra o que ficou fora.'],
   ['Margem ÷ CAC (180d)','Margem de contribuição que o cohort acumulou em 180 dias, dividida pelo CAC do mês em que ele foi adquirido.','margem 180d por cliente ÷ CAC do mês','core.vw_payback_coorte','Abaixo de 1,00 o cohort não devolveu a mídia. O denominador usa clientes com PRIMEIRA COMPRA PAGA no mês, não o campo is_new_customer — aquele campo conta quem só tinha comprado amostra e inflava a contagem (156 contra 53 em julho), produzindo um CAC 5x otimista.'],
-  ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.']
+  ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.'],
+  ['Caixa gerado','Faturamento − taxas − frete − mídia, SEM tirar o CMV.','resultado + CMV','core.vw_dre_dia','Regra do Gabriel (30/08): o estoque já foi pago, então vender do estoque existente gera caixa mesmo com margem contábil ruim. É a régua de HOJE; a margem de contribuição (com CMV) vigia o dia em que o estoque precisar de reposição.'],
+  ['Ciclo de assinatura','Quem pagou assinatura no mês M era esperado em M+1: renovou, falhou, cancelou ou pausou.','esperados (pagantes em M) vs renovaram (pagantes em M+1)','core.vw_assinatura_ciclo','Status de quem sumiu vem de auditoria manual (assinatura_status_manual, 19/08) — o que ela não cobre é SEM INFO, de propósito: é o tamanho do buraco do Appstle. Grão mensal: plano de 45d e cobrança no dia 30/31 geram ruído de fronteira.'],
+  ['% novos de canal não-pago','Fatia dos clientes novos cuja aquisição não veio de mídia comprada.','novos (canal não-pago) ÷ novos totais','core.vw_app_pedido + fonte_canonica.pago','A métrica da tese do board (16/08): o gargalo é atenção barata. Não-pago = sem mídia comprada, não custo zero — conteúdo e creator custam tempo e produto; parte do não-atribuído pode ser eco da mídia paga.'],
+  ['% CR e ticket por PDP','Conversão e ticket da página de produto, juntos.','pedidos ÷ sessões que VIRAM a PDP · receita ÷ pedidos · R$/sessão = CR × ticket','core.vw_pdp_dia','Um sem o outro engana: a escada 1/3/6 pode subir CR derrubando ticket. Sessão que viu duas PDPs conta nas duas. Cobertura desde 2026.']
  ];
  const CL=[
   ['Amostra','Recebeu amostra e ainda não fez compra paga. NÃO é cliente pagante, NÃO é novo cliente, NÃO entra em compras nem em faturamento de aquisição. Quando faz a primeira compra paga, entra normalmente como novo cliente — a regra está implementada na ordem do cálculo.'],
@@ -1654,10 +1450,10 @@ function render(){
  el.innerHTML=`<div class="gr g6">${'<div class="cd"><div class="sk" style="width:55%"></div><div class="sk" style="height:24px;margin-top:9px"></div></div>'.repeat(6)}</div>`;
  requestAnimationFrame(()=>{
   try{
-   el.innerHTML = S.pg==='resumo'?pgResumo():S.pg==='canais'?pgCanais():
-    S.pg==='tipocliente'?pgTipoCliente():S.pg==='mensal'?pgMensal():
-    S.pg==='semanal'?pgSemanal():
-    S.pg==='matriz'?pgMatriz():S.pg==='resultado'?pgResultado():
+   el.innerHTML = S.pg==='visao'?pgVisao():S.pg==='canais'?pgCanais():
+    S.pg==='aquisicao'?pgAquisicao():S.pg==='amostras'?pgAmostras():
+    S.pg==='base'?pgBase():S.pg==='jornada'?pgJornada():
+    S.pg==='resultado'?pgResultado():
     S.pg==='definicoes'?pgDefinicoes():pgConfig();
   }catch(e){
    el.innerHTML=`<div class="al c"><div><b>Erro ao montar a página.</b><br>
@@ -1692,57 +1488,6 @@ function bind(el){
  const bq=el.querySelector('#bq'); if(bq){bq.oninput=()=>{const v=bq.value.toLowerCase();
   el.querySelectorAll('tbody tr').forEach(tr=>{const t=tr.querySelector('td.fx');
    tr.style.display=(!t||t.textContent.toLowerCase().includes(v))?'':'none'})}}
- if(S.pg==='atribuicao')el.querySelectorAll('tbody tr.ck').forEach(tr=>{
-  const c=tr.querySelector('td.fx'); if(!c)return;
-  const nome=c.textContent.trim().split('\n')[0].trim();
-  const ab=()=>drawer(nome); tr.onclick=ab; tr.onkeydown=e=>{if(e.key==='Enter')ab()}});
-}
-function drawer(canal){
- const j=jan(), A=agg(j,{canalView:true}), c=A.can[canal];
- if(!c){return}
- const meses=[...new Set(serie(j,'mes').map(s=>s.k))];
- const ads=D.adsets.filter(a=>meses.includes(a.mes)&&+a.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,8);
- const cb=D.cbase.filter(x=>x.canal===canal), cli=cb.reduce((a,x)=>a+x.cli,0);
- const hv=D.heat.filter(x=>x.canal===canal);
- const rec=hv.reduce((a,x)=>a+ +x.rec,0);
- const st=serie(j,'mes');
- const rr=Object.values(agg(j).can)[0];
- // receita recorrente originada por este canal de aquisição
- const orig=dias.filter(r=>inP(r.dia,j)&&r.canal_aq===canal&&r.categoria==='recorrente')
-  .reduce((a,r)=>a+val(r),0);
- document.getElementById('dwt').textContent=canal;
- document.getElementById('db').innerHTML=`
-  <dl class="kv">
-   <dt>Faturamento</dt><dd>${R$(c.rec)}</dd>
-   <dt>Gasto</dt><dd>${c.spend>0?R$(c.spend):'<span class="na">sem dado</span>'}</dd>
-   <dt>ROAS</dt><dd>${RT(dv(c.rec,c.spend))}</dd>
-   <dt>Margem de contribuição</dt><dd>${R$(c.marg)}</dd>
-   <dt>Margem por real gasto</dt><dd>${RT(dv(c.marg,c.spend))}</dd>
-   <dt>Compras</dt><dd>${IN(c.ped)}</dd>
-   <dt>Clientes únicos</dt><dd>${IN(c.cli)}</dd>
-   <dt>Ticket médio</dt><dd>${R$(dv(c.rec,c.ped))}</dd>
-  </dl>
-  <h4 style="font-size:12.5px;margin:0 0 6px">Composição de clientes</h4>
-  <dl class="kv">
-   <dt>Novos — compra única</dt><dd>${IN(c.p_novo_avulso)} · ${R$(c.r_novo_avulso)}</dd>
-   <dt style="color:var(--lj)">Novos — assinatura</dt><dd>${IN(c.p_novo_assinatura)} · ${R$(c.r_novo_assinatura)}</dd>
-   <dt>Antigos — compra única</dt><dd>${IN(c.p_antigo_avulso)} · ${R$(c.r_antigo_avulso)}</dd>
-   <dt style="color:var(--lj)">Antigos — início de assinatura</dt><dd>${IN(c.p_antigo_inicio_assinatura)} · ${R$(c.r_antigo_inicio_assinatura)}</dd>
-   <dt>CAC de novo assinante</dt><dd>${R$(dv(c.spend,c.p_novo_assinatura+c.p_antigo_inicio_assinatura))}</dd>
-   <dt>Receita recorrente originada</dt><dd>${R$(orig)}</dd>
-  </dl>
-  ${cli?`<h4 style="font-size:12.5px;margin:14px 0 6px">Cohorts deste canal</h4>
-  <dl class="kv"><dt>Clientes adquiridos (histórico)</dt><dd>${IN(cli)}</dd>
-   <dt>Receita acumulada</dt><dd>${R$(rec)}</dd>
-   <dt>Receita por cliente</dt><dd>${R$(dv(rec,cli))}</dd>
-   <dt>Idade média do cohort</dt><dd>${IN(cb.reduce((a,x)=>a+ +x.idade*x.cli,0)/cli)}d</dd></dl>`:''}
-  ${st.length>1?`<h4 style="font-size:12.5px;margin:14px 0 6px">Evolução no período</h4>
-   <dl class="kv">${st.map(x=>`<dt>${MS[+x.k.slice(5,7)-1]}</dt><dd>${R0(x.rec)}</dd>`).join('')}</dl>`:''}
-  ${canal==='meta'&&ads.length?`<h4 style="font-size:12.5px;margin:14px 0 6px">Conjuntos de anúncio</h4>
-   <dl class="kv">${ads.map(a=>`<dt>${a.adset}</dt><dd>${R0(+a.spend)} · ${RT(dv(+a.marg,+a.spend))}×</dd>`).join('')}</dl>`:''}`;
- document.getElementById('ov').classList.add('on');
- document.getElementById('dw').classList.add('on');
- document.getElementById('dx').focus();
 }
 const fech=()=>{document.getElementById('ov').classList.remove('on');document.getElementById('dw').classList.remove('on')};
 /* ==================== eventos globais ==================== */
@@ -1776,7 +1521,7 @@ function url(){const p=new URLSearchParams();
 (function init(){
  const p=new URLSearchParams(location.search);
  for(const k of ['pg','per','cmp','mod','can','cat','bal','gru','eixo','rec','d1','d2'])if(p.get(k))S[k]=p.get(k);
- if(!PGS[S.pg])S.pg='resumo';
+ if(!PGS[S.pg])S.pg='visao';
  try{const c=localStorage.getItem('ca_cols'); if(c)S.oc=JSON.parse(c)}catch(e){}
  render();
 })();

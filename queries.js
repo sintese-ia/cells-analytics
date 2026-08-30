@@ -193,17 +193,6 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
  sum((select (a->>'value')::numeric from jsonb_array_elements(actions::jsonb) a where a->>'action_type'='purchase')) compras,
  round(sum((select (v->>'value')::numeric from jsonb_array_elements(action_values::jsonb) v where v->>'action_type'='purchase'))::numeric,2) receita
  from ads.meta_ads_raw where date_start>='2026-01-01' group by 1`,
-  adsets: `select adset_name adset,to_char(dia,'YYYY-MM') mes,round(sum(spend)::numeric,2) spend,
- sum(pedidos_aquisicao) ped,round(sum(receita)::numeric,2) rec,round(sum(margem)::numeric,2) marg
- from core.vw_criativo_dia where dia>='2026-01-01' group by 1,2 having sum(spend)>0 or sum(pedidos_aquisicao)>0`,
-  heat: `with p as (select coalesce(cid,email) k,min(created_at) prim,(array_agg(canal_aq order by created_at))[1] canal,
-  (array_agg(categoria order by created_at))[1] cat1 from core.vw_app_pedido where categoria<>'amostra' group by 1)
-select to_char(date_trunc('month',p.prim),'YYYY-MM') co, p.canal, p.cat1,
- ((extract(year from o.created_at)-extract(year from p.prim))*12
-  +(extract(month from o.created_at)-extract(month from p.prim)))::int mn,
- count(distinct p.k) cli, count(*) ped, round(sum(o.liquido)::numeric,2) rec
-from p join core.vw_app_pedido o on coalesce(o.cid,o.email)=p.k and o.categoria<>'amostra'
-group by 1,2,3,4`,
   cbase: `with p as (select coalesce(cid,email) k,min(created_at) prim,(array_agg(canal_aq order by created_at))[1] canal,
   (array_agg(categoria order by created_at))[1] cat1 from core.vw_app_pedido where categoria<>'amostra' group by 1)
 select to_char(date_trunc('month',prim),'YYYY-MM') co,canal,cat1,count(*) cli,
@@ -265,7 +254,6 @@ from core.vw_payback_coorte order by mes, canal`,
   k7:   `select * from core.vw_kpi_7d where ate >= current_date - 90 order by ate`,
   ksem: `select * from core.vw_kpi_semana where semana >= current_date - 120 order by semana`,
   kmes: `select * from core.vw_kpi_mes where mes >= '2026-05-01' order by mes`,
-  plano:`select * from core.plano_mes order by mes`,
   // REMOVIDA em 08/08/2026: a query `objetivo` (core.vw_campanha_objetivo_dia). A ideia era rotular
   // cada conjunto como amostra/venda/topo para dividir o gasto por balde. O dado derrubou a
   // premissa: o mesmo conjunto entrega os dois. Em julho o W1_ENERGETICO fez 11 amostras + 5
@@ -299,4 +287,21 @@ from core.vw_payback_coorte order by mes, canal`,
    nao_identificado, spend, impressoes, ob_clicks, plat_lpv, plat_atc, plat_checkout,
    plat_compras, pedidos, nc_pedidos, receita, nc_receita, conta, margem, nc_margem
   from core.vw_ads_metricas_dia where dia >= '2026-01-01' order by dia`,
+  // --- Reestruturação da visão geral (30/08/2026) — árvore de KPIs do Gabriel ---
+  // CICLO DE ASSINATURA. "Esperados" = quem pagou assinatura no mês M; "renovaram" = pagou de novo
+  // em M+1. A última transição só fecha quando M+1 acaba — o app marca a linha como "em curso".
+  // Status de quem sumiu vem de core.assinatura_status_manual (auditoria de 19/08, 9 e-mails);
+  // o resto é 'sem_info' de propósito: o painel mostra o tamanho do buraco do Appstle.
+  assinCiclo: `select mes, esperados, renovaram, cancelou, pausou, falha_pagamento,
+   ciclo_longo, sem_info, valor_sumiu from core.vw_assinatura_ciclo order by mes`,
+  assinSumiu: `select mes, email, status, detalhe, valor_mes, ultima_cobranca
+  from core.vw_assinatura_sumiu
+ where mes >= date_trunc('month', now()) - interval '3 months' order by mes desc, status, email`,
+  // PDP × DIA: sessão que VIU a PDP; pedido ligado pela sessão em que aconteceu. Sessão que viu
+  // duas PDPs conta nas duas — a tela declara. kit-descoberta é a PDP da amostra (0 pedidos pagos).
+  pdp: `select dia, pdp, sessoes, pedidos, pedidos_pagos, receita
+  from core.vw_pdp_dia where dia >= '2026-01-01'`,
+  // TEMPO ENTRE ETAPAS da jornada (mediana/quartis) — já existia, o painel não lia.
+  tempo: `select ord, etapa, pessoas, nao_deram_o_passo, p25_dias, mediana_dias, p75_dias
+  from core.vw_tempo_entre_etapas order by ord`,
 };
