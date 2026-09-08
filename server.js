@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 const Q = require('./queries');
+const AGENTE = require('./agente');
 
 const PORT   = process.env.PORT || 3000;
 const SENHA  = process.env.SENHA || 'turbo';
@@ -141,6 +142,25 @@ http.createServer(async (req, res) => {
 
   const ck = req.headers.cookie || '';
   const autenticado = ck.includes(`${COOKIE}=${TOKEN}`);
+
+  // agente "perguntar ao dado" — mesma sessão do painel, resposta JSON
+  if (req.method === 'POST' && u.pathname === '/perguntar') {
+    if (!autenticado) { res.writeHead(401, {'content-type':'application/json'}); return res.end('{"erro":"sessão expirada — recarregue e entre de novo"}'); }
+    let b = ''; req.on('data', c => { b += c; if (b.length > 60000) req.destroy(); });
+    return req.on('end', async () => {
+      try {
+        const { mensagens } = JSON.parse(b || '{}');
+        if (!Array.isArray(mensagens) || !mensagens.length) throw new Error('pergunta vazia');
+        const resposta = await AGENTE.perguntar(mensagens);
+        res.writeHead(200, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+        res.end(JSON.stringify({ resposta }));
+      } catch (e) {
+        console.error('[agente]', e.message);
+        res.writeHead(500, {'content-type':'application/json; charset=utf-8'});
+        res.end(JSON.stringify({ erro: e.message }));
+      }
+    });
+  }
 
   if (req.method === 'POST') {
     let b = ''; req.on('data', c => { b += c; if (b.length > 4096) req.destroy(); });

@@ -1,3 +1,1 @@
-{ "name":"cells-analytics","version":"1.0.0","private":true,
-  "main":"server.js","scripts":{"start":"node server.js"},
-  "dependencies":{"pg":"^8.13.1"},"engines":{"node":">=20"} }
+{"name":"cells-analytics","version":"1.0.0","private":true,"main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"@anthropic-ai/sdk":"^0.124.0","pg":"^8.13.1"},"engines":{"node":">=20"}}
