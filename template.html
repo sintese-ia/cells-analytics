@@ -1487,6 +1487,15 @@ function filtros(){
    <option value="liq" ${S.rec==='liq'?'selected':''}>Líquido</option>
    <option value="bruto" ${S.rec==='bruto'?'selected':''}>Bruto</option></select></div>
   <span style="font-size:11.5px;color:var(--t3)">Campanha, criativo, influenciador, nutricionista, evento, produto e oferta ficam sem opção: <b>não há dado</b> dessas dimensões hoje.</span>`;
+ // Na Visão geral os filtros NÃO se aplicam (tela fixa no mês corrente) — a barra viva com o
+ // corpo parado dava sensação de dash travado. Desabilita tudo menos Exportar e Atualizar.
+ if(S.pg==='visao'){
+  const nota='Não se aplica na Visão geral — ela é fixa no mês corrente. Use nas outras telas.';
+  for(const sel of ['#fp','#fc','#fm','#fch','#fcat','#fgr','#frec','#bm','#bc','#d1','#d2'])
+   document.querySelectorAll(sel).forEach(e=>{e.disabled=true;e.title=nota});
+  document.querySelectorAll('.chk button').forEach(e=>{e.disabled=true;e.title=nota});
+  for(const z of ['flz','flx'])document.getElementById(z)?.querySelectorAll('.fg').forEach(g=>g.style.opacity=.45);
+ }
 }
 function nav(){
  document.getElementById('nv').innerHTML=Object.entries(PGS).map(([k,v])=>
@@ -1500,7 +1509,11 @@ function nav(){
 function render(){
  document.getElementById('pt').textContent=PGS[S.pg].t;
  const j=jan(), jc=janC(j);
- document.getElementById('up').textContent=`${DT(j[0])} a ${DT(j[1])}${jc?` · comparando com ${DT(jc[0])} a ${DT(jc[1])}`:''} · atualizado ${DT(MAX)}`;
+ // Visão geral é fixa no mês corrente: o cabeçalho diz ISSO, não o período do seletor —
+ // datas mudando com o corpo parado era meia-verdade que parecia travamento.
+ document.getElementById('up').textContent=S.pg==='visao'
+  ?`mês corrente (${MS[+MAX.slice(5,7)-1]}/${MAX.slice(2,4)}) · atualizado ${DT(MAX)}`
+  :`${DT(j[0])} a ${DT(j[1])}${jc?` · comparando com ${DT(jc[0])} a ${DT(jc[1])}`:''} · atualizado ${DT(MAX)}`;
  filtros(); nav();
  const el=document.getElementById('pg');
  el.innerHTML=`<div class="gr g6">${'<div class="cd"><div class="sk" style="width:55%"></div><div class="sk" style="height:24px;margin-top:9px"></div></div>'.repeat(6)}</div>`;
