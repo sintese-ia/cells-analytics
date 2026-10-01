@@ -67,7 +67,9 @@ select,input[type=date]{border:1px solid var(--ln);background:var(--br);border-r
 .pnh{padding:10px 14px;border-bottom:1px solid var(--ln);display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
 .pnh h3{font-size:12.5px;font-weight:650;margin:0}
 .pnb{padding:14px}
-.tw{overflow:auto;max-height:600px}
+/* só horizontal: o max-height criava scroll interno de 600px que sequestrava a roda do mouse
+   (Jornada/Config ficavam com o fim da página inacessível) */
+.tw{overflow-x:auto}
 table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
 th{position:sticky;top:0;z-index:2;background:var(--br);text-align:right;padding:8px 9px;font-size:10px;
  font-weight:700;color:var(--t3);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;
@@ -93,7 +95,8 @@ tfoot td.fx{background:#F4F4F1}
 .cht{width:100%;height:230px;display:block}
 .lgd{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;color:var(--t2);margin-top:8px}
 .lgd i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:4px}
-.al{display:flex;gap:9px;padding:10px 12px;border-radius:4px;font-size:12px;border:1px solid var(--ln);background:var(--br);margin-bottom:7px}
+/* display:block, nunca flex — com flex cada <b>/<code> solto vira coluna e a nota embaralha (bug do frete no Resultado) */
+.al{display:block;padding:10px 12px;border-radius:4px;font-size:12px;border:1px solid var(--ln);background:var(--br);margin-bottom:7px}
 .al.c{border-left:3px solid var(--vm);background:var(--vmb)}
 .al.w{border-left:3px solid var(--lj);background:var(--ljb)}
 .al.o{border-left:3px solid var(--vd);background:var(--vdb)}
@@ -237,6 +240,11 @@ const spend=D.spend.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
 // 2026-01-01, entao o total de clientes nunca fechava (mostrava 624 onde o historico tem 1.206).
 const MAX=dias.reduce((a,r)=>r.dia>a?r.dia:a,'2026-01-01');
 const MIN=dias.reduce((a,r)=>r.dia<a?r.dia:a,'9999-12-31');
+
+// Data do snapshot mais recente do Appstle (crm.appstle_subscription) — as views leem
+// max(snapshot_em) sozinhas; a tela só precisa DIZER qual é, nunca chumbar a data no texto.
+const APPSTLE=(D.appstleSnap||[])[0]||{};
+const SNAP_APPSTLE=APPSTLE.snapshot_em?DT(String(APPSTLE.snapshot_em).slice(0,10)):'—';
 
 // ULTIMO DIA FECHADO — fronteira do coletor de gasto do Meta, que roda ~7h atras.
 // O dia corrente entra com receita e SEM gasto: em 06/08/2026 foram 11 pedidos e R$ 716,91
@@ -738,8 +746,8 @@ function pgAquisicao(){
   ${origemTb}
   <div class="al w" style="margin-top:8px"><b>“Não-pago” aqui é ausência de mídia comprada, não custo zero de verdade</b> —
    conteúdo, creator e parceria custam tempo e produto. E parte do não-atribuído pode ser eco da
-   própria mídia paga (viu anúncio, entrou digitando). Canal pago <b>sem gasto registrado</b> (ex.:
-   google_ads) tem CAC indeterminado, não bom. O detalhe campanha → conjunto → anúncio mora em
+   própria mídia paga (viu anúncio, entrou digitando). Canal pago <b>sem gasto registrado</b> tem
+   CAC indeterminado, não bom. O detalhe campanha → conjunto → anúncio mora em
    <b>Canais e campanhas</b>.</div></div>`;
 
  return `${avisoAberto('As métricas de custo abaixo fecham em '+DT(FECHADO)+' — o dia aberto ainda não tem o gasto coletado, então o período é cortado ali.')}
@@ -819,7 +827,7 @@ function pgVisao(){
    ${cdS('Resultado (com CMV)',`<span style="color:${T.resultado>=0?'var(--vd)':'var(--vm)'}">${R0(T.resultado)}</span>`,'quando o estoque precisar de reposição')}
   </div></div>
  <div class="sc"><div class="sch"><div><h2>Quebra da meta — ${mesNome}</h2>
-  <p>“Deveria estar” = meta × dias decorridos. O MRR concentra no fim do mês (7 das 13 cobranças caem no dia 30/31).</p></div></div>${quebraMeta(mes)}</div>
+  <p>“Deveria estar” = meta × dias decorridos. O MRR concentra no fim do mês${APPSTLE.ativas?` (${IN(APPSTLE.fim_mes)} das ${IN(APPSTLE.ativas)} cobranças ativas no Appstle caem do dia 28 em diante)`:''}.</p></div></div>${quebraMeta(mes)}</div>
  <div class="sc"><div class="sch"><div><h2>Alertas</h2></div></div>${pbHtml}${sh||'<div class="al o">Todas as fontes de dado dentro do SLA.</div>'}</div>`;
 }
 
@@ -840,7 +848,7 @@ function pgAmostras(){
   const k=r.campanha+'|'+r.conjunto, o=porCj[k]||(porCj[k]={sp:0,am:0,aq:0});
   o.sp+=(+r.spend||0); o.am+=(+r.ped_amostra||0); o.aq+=(+r.ped_aquisicao||0)}
  for(const o of Object.values(porCj)){ if(o.am>o.aq&&o.am>0){spAm+=o.sp;qAm+=o.am} }
- const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(dv(v,base)||0)*260)}px">${IN(v)}</div><div class="fnl">${n}${base?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
+ const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(base!=null?(dv(v,base)||0):1)*260)}px">${IN(v)}</div><div class="fnl">${n}${base?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
  const sm=serie([MIN,MAX],'mes');
  const tbl=sm.slice(-12).reverse().map(d=>`<tr><td class="l">${MS[+d.k.slice(5,7)-1]}/${d.k.slice(2,4)}</td>
    <td>${IN(d.p_amostra)}</td><td>${R0(d.r_amostra)}</td></tr>`).join('');
@@ -883,32 +891,36 @@ function pgBase(){
    <td style="color:${p>=.8?'var(--vd)':p>=.6?'var(--lj)':'var(--vm)'};font-weight:650">${PC((p||0)*100)}</td>
    <td>${IN(r.falha_pagamento)}</td><td>${IN(r.cancelou)}</td><td>${IN(r.pausou)}</td>
    <td style="color:var(--vd)">${IN(r.reagendado)}</td>
+   <td style="color:var(--vd)">${IN(r.a_vencer)}</td>
    <td>${IN(r.ciclo_longo)}</td><td>${IN(r.sem_info)}</td><td>${R0(+r.valor_sumiu)}</td></tr>`}).join('');
  // detalhe nominal da transicao mais recente exibivel
  const ult=cic[cic.length-1];
- const CHIP={cancelado:'r',pausado:'g',cartao_revogado:'i',cartao_recusado:'i',plano_45d:'g',sem_info:'g',reagendado:'m'};
+ const CHIP={cancelado:'r',pausado:'g',cartao_revogado:'i',cartao_recusado:'i',plano_45d:'g',sem_info:'g',reagendado:'m',a_vencer:'m'};
  const NOME={cancelado:'cancelou',pausado:'pausou',cartao_revogado:'falha — cartão revogado',
   cartao_recusado:'falha — cartão recusado',plano_45d:'ciclo de 45d',sem_info:'sem info',
-  reagendado:'reagendado — renova depois'};
- const det=(D.assinSumiu||[]).filter(r=>ult&&String(r.mes).slice(0,10)===ult.mes)
+  reagendado:'reagendado — renova depois',a_vencer:'a vencer — cobrança agendada'};
+ // a_vencer fica FORA da lista nominal: não há ação a tomar em cobrança que ainda vai acontecer
+ const det=(D.assinSumiu||[]).filter(r=>ult&&String(r.mes).slice(0,10)===ult.mes&&r.status!=='a_vencer')
   .map(r=>`<tr><td class="l">${r.email}</td>
    <td class="l"><span class="pl ${CHIP[r.status]||'g'}">${NOME[r.status]||r.status}</span></td>
    <td class="l" style="font-weight:400;color:var(--t2)">${r.detalhe||'—'}</td>
    <td>${R0(+r.valor_mes)}</td><td>${DT(r.ultima_cobranca)}</td></tr>`).join('');
- const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(dv(v,base)||0)*260)}px">${IN(v)}</div><div class="fnl">${n}${base!=null?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
+ const fnB=(v,n,base)=>`<div class="fnr"><div class="fnb ${v?'lj':'g'}" style="width:${Math.max(52,(base!=null?(dv(v,base)||0):1)*260)}px">${IN(v)}</div><div class="fnl">${n}${base!=null?` · ${PC((dv(v,base)||0)*100)}`:''}</div></div>`;
  const tempos=(D.tempo||[]).filter(t=>+t.ord>=2).map(t=>`<tr><td class="l">${t.etapa}</td>
    <td>${IN(t.pessoas)}</td><td>${IN(t.nao_deram_o_passo)}</td><td>${IN(t.mediana_dias)}d</td>
    <td class="t3">${IN(t.p25_dias)}–${IN(t.p75_dias)}d</td></tr>`).join('');
  return `<div class="sc"><div class="gr g6">${['renov','rrec','pcrec','antc','txant'].map(k=>CD(k,A,B)).join('')}</div></div>
  <div class="sc"><div class="sch"><div><h2>O que aconteceu com as assinaturas — ciclo a ciclo</h2>
   <p>Quem pagou assinatura num mês era esperado no seguinte. <b>Renovou, falhou o pagamento,
-  cancelou, pausou — ou só reagendou?</b> Status cruzado de Appstle (snapshot 30/08), Stripe e
-  auditoria manual. <b>Reagendado renova no mês seguinte: não é churn.</b></p></div></div>
+  cancelou, pausou — ou só reagendou?</b> Status cruzado de Appstle (snapshot ${SNAP_APPSTLE}), Stripe e
+  auditoria manual. <b>Reagendado renova no mês seguinte: não é churn.</b> <b>A vencer</b> é a
+  cobrança do ciclo em curso que ainda não chegou — não é churn nem buraco.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Ciclo</th><th>Esperados</th><th>Renovaram</th><th>%</th>
    <th>Falha pgto</th><th>Cancelou</th><th>Pausou</th>
    <th title="Assinatura ativa com próxima cobrança 2+ meses à frente — NÃO é churn, renova depois">Reagendado</th>
-   <th>Ciclo 45d</th><th>Sem info</th><th title="Exclui reagendado — dinheiro que renova depois não sumiu">R$ que sumiu</th></tr></thead>
-   <tbody>${linhas||'<tr><td colspan="11" class="emp">Sem dados de ciclo.</td></tr>'}</tbody></table></div></div>
+   <th title="Ciclo em curso: assinatura ativa com cobrança agendada deste mês pra frente — ainda não venceu">A vencer</th>
+   <th>Ciclo 45d</th><th>Sem info</th><th title="Exclui reagendado e a vencer — dinheiro agendado não sumiu">R$ que sumiu</th></tr></thead>
+   <tbody>${linhas||'<tr><td colspan="12" class="emp">Sem dados de ciclo.</td></tr>'}</tbody></table></div></div>
  ${ult?`<div class="sc"><div class="sch"><div><h2>Quem sumiu no ciclo ${MS[+ult.mes.slice(5,7)-1]} → ${MS[(+ult.mes.slice(5,7))%12]}${ult.emCurso?' (em curso)':''}</h2>
   <p>Nominal, para agir: recuperar cartão, perguntar o motivo, reativar pausa.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">E-mail</th><th class="l">O que houve</th>
@@ -933,9 +945,10 @@ function pgBase(){
   <div class="tw"><table><thead><tr><th class="l">Etapa</th><th>Deram o passo</th><th>Não deram</th>
    <th>Mediana</th><th>P25–P75</th></tr></thead><tbody>${tempos||'<tr><td colspan="5" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
  <div class="sc"><div class="al o"><b>O status de quem sumiu vem de três fontes</b>: snapshot do
-  Appstle (export de 30/08 em <code>crm.appstle_subscription</code> — cancelamento e pausa com data),
+  Appstle (export de ${SNAP_APPSTLE} em <code>crm.appstle_subscription</code> — cancelamento e pausa com data),
   Stripe (cartão recusado/revogado) e auditoria manual. <b>Reagendado não é churn</b>: assinatura
-  ativa cuja próxima cobrança pula pro mês seguinte. O “sem info” restante é quase todo Woo legado
+  ativa cuja próxima cobrança pula pro mês seguinte. <b>A vencer não é churn</b>: cobrança do ciclo
+  em curso que ainda não chegou. O “sem info” restante é quase todo Woo legado
   (CellsClub), que não existe no Appstle. O snapshot é manual — re-exportar do Appstle quando o
   número parecer velho.</div>
   ${jr.falha?`<div class="al c"><b>${IN(jr.falha.n)} cobranças do CellsClub (Woo) falharam</b> — ${R0(jr.falha.v)} não cobrados.
@@ -1060,7 +1073,7 @@ function pgResultado(){
   ${L('Frete líquido',-T.frete_liquido,'(−)','',
       'Custo real por pedido, do Bling, menos o frete cobrado do cliente. SEDEX em SP sai ~R$ 11; Express fora de SP ~R$ 19.')}
   ${L('MARGEM DE CONTRIBUIÇÃO',T.margem_contribuicao,'=','1')}
-  ${L('Mídia',-T.midia,'(−)','','Meta e WhatsApp por API. Google Ads não tem custo coletado.')}
+  ${L('Mídia',-T.midia,'(−)','','Meta e Google Ads por API; WhatsApp e Klaviyo lançados à mão em ads.custos_canal.')}
   ${L('RESULTADO',T.resultado,'=','1')}
   ${L('CMV de volta',T.cmv,'(+)','','O estoque já foi pago — o CMV não é saída de caixa deste período.')}
   ${L('CAIXA GERADO',cx,'=','1','Faturamento − taxas − frete − mídia. A régua de hoje, enquanto se vende do estoque existente. Quando ele precisar de reposição, quem manda volta a ser o RESULTADO.')}
@@ -1360,8 +1373,9 @@ function pgCanais(){
  <div class="sc"><div class="al o"><b>Renovação de assinatura não entra aqui.</b> Atribuir a
   renovação de um assinante ao canal que o trouxe meses atrás não descreve nada deste período — ela
   aparece em Resumo, Tipo de cliente e Semanal.</div>
-  <div class="al w"><b>Gasto só existe onde é coletado.</b> Meta e WhatsApp vêm por API; o Google Ads
-  não tem custo coletado e canal orgânico não tem custo nenhum. Onde não há gasto, ROAS, CPA e CAC
+  <div class="al w"><b>Gasto só existe onde é coletado.</b> Meta e Google Ads vêm por API (cron);
+  WhatsApp e Klaviyo são lançamento manual em <code>ads.custos_canal</code> — podem atrasar (a Visão
+  geral alerta). Canal orgânico não tem custo nenhum. Onde não há gasto, ROAS, CPA e CAC
   aparecem como <b>—</b>, nunca como zero.</div></div>`;
 }
 function pgDefinicoes(){
@@ -1385,7 +1399,7 @@ function pgDefinicoes(){
   ['Margem ÷ CAC (180d)','Margem de contribuição que o cohort acumulou em 180 dias, dividida pelo CAC do mês em que ele foi adquirido.','margem 180d por cliente ÷ CAC do mês','core.vw_payback_coorte','Abaixo de 1,00 o cohort não devolveu a mídia. O denominador usa clientes com PRIMEIRA COMPRA PAGA no mês, não o campo is_new_customer — aquele campo conta quem só tinha comprado amostra e inflava a contagem (156 contra 53 em julho), produzindo um CAC 5x otimista.'],
   ['Mídia por amostra','Gasto das campanhas que entregam amostra ÷ amostras que elas entregaram.','gasto (campanhas onde amostras > clientes novos) ÷ amostras','core.vw_criativo_dia','Vem do banco. O valor de R$ 9,32 que já apareceu aqui era consequência do mesmo bug do is_new_customer.'],
   ['Caixa gerado','Faturamento − taxas − frete − mídia, SEM tirar o CMV.','resultado + CMV','core.vw_dre_dia','Regra do Gabriel (30/08): o estoque já foi pago, então vender do estoque existente gera caixa mesmo com margem contábil ruim. É a régua de HOJE; a margem de contribuição (com CMV) vigia o dia em que o estoque precisar de reposição.'],
-  ['Ciclo de assinatura','Quem pagou assinatura no mês M era esperado em M+1: renovou, falhou, cancelou ou pausou.','esperados (pagantes em M) vs renovaram (pagantes em M+1)','core.vw_assinatura_ciclo','Status de quem sumiu vem de auditoria manual (assinatura_status_manual, 19/08) — o que ela não cobre é SEM INFO, de propósito: é o tamanho do buraco do Appstle. Grão mensal: plano de 45d e cobrança no dia 30/31 geram ruído de fronteira.'],
+  ['Ciclo de assinatura','Quem pagou assinatura no mês M era esperado em M+1: renovou, falhou, cancelou, pausou, reagendou — ou a cobrança ainda está A VENCER (ciclo em curso).','esperados (pagantes em M) vs renovaram (pagantes em M+1)','core.vw_assinatura_ciclo','Status cruza snapshot do Appstle (max(snapshot_em) de crm.appstle_subscription), Stripe e auditoria manual (assinatura_status_manual). A VENCER = ativa com cobrança agendada deste mês pra frente, só em ciclo aberto — fora do "R$ que sumiu". O que sobra é SEM INFO, de propósito: é o tamanho do buraco (quase todo Woo legado). Grão mensal: plano de 45d e cobrança no dia 30/31 geram ruído de fronteira.'],
   ['% novos de canal não-pago','Fatia dos clientes novos cuja aquisição não veio de mídia comprada.','novos (canal não-pago) ÷ novos totais','core.vw_app_pedido + fonte_canonica.pago','A métrica da tese do board (16/08): o gargalo é atenção barata. Não-pago = sem mídia comprada, não custo zero — conteúdo e creator custam tempo e produto; parte do não-atribuído pode ser eco da mídia paga.'],
   ['% CR e ticket por PDP','Conversão e ticket da página de produto, juntos.','pedidos ÷ sessões que VIRAM a PDP · receita ÷ pedidos · R$/sessão = CR × ticket','core.vw_pdp_dia','Um sem o outro engana: a escada 1/3/6 pode subir CR derrubando ticket. Sessão que viu duas PDPs conta nas duas. Cobertura desde 2026.']
  ];

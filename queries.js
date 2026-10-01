@@ -290,10 +290,19 @@ from core.vw_payback_coorte order by mes, canal`,
   // --- Reestruturação da visão geral (30/08/2026) — árvore de KPIs do Gabriel ---
   // CICLO DE ASSINATURA. "Esperados" = quem pagou assinatura no mês M; "renovaram" = pagou de novo
   // em M+1. A última transição só fecha quando M+1 acaba — o app marca a linha como "em curso".
-  // Status de quem sumiu vem de core.assinatura_status_manual (auditoria de 19/08, 9 e-mails);
-  // o resto é 'sem_info' de propósito: o painel mostra o tamanho do buraco do Appstle.
+  // Status cruza snapshot do Appstle (max(snapshot_em)), Stripe e core.assinatura_status_manual.
+  // 'a_vencer' (01/10): ciclo em curso + ativa + cobrança agendada = ainda não venceu — sem isso
+  // o dia 1º do mês mostrava 177 "sem_info" e R$ 40k "sumidos" que eram só cobrança por vir.
   assinCiclo: `select mes, esperados, renovaram, cancelou, pausou, falha_pagamento,
-   ciclo_longo, sem_info, valor_sumiu, reagendado from core.vw_assinatura_ciclo order by mes`,
+   ciclo_longo, sem_info, valor_sumiu, reagendado, a_vencer
+  from core.vw_assinatura_ciclo order by mes`,
+  // Snapshot mais recente do Appstle: a data (as telas declaram a fonte sem chumbar "30/08" no
+  // texto) + concentração de cobrança no fim do mês (substitui o "7 das 13" fossilizado de julho).
+  appstleSnap: `select max(snapshot_em) snapshot_em,
+   count(*) filter (where status='active') ativas,
+   count(*) filter (where status='active' and extract(day from proximo_pedido_em) >= 28) fim_mes
+  from crm.appstle_subscription
+  where snapshot_em = (select max(snapshot_em) from crm.appstle_subscription)`,
   assinSumiu: `select mes, email, status, detalhe, valor_mes, ultima_cobranca
   from core.vw_assinatura_sumiu
  where mes >= date_trunc('month', now()) - interval '3 months' order by mes desc, status, email`,
