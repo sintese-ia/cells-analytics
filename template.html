@@ -778,16 +778,39 @@ function pgAquisicao(){
 function pgVisao(){
  const mes=mesCorrente();
  const mesIni=MAX.slice(0,7)+'-01';
- const T=dreJanela([mesIni,MAX]), cx=caixaGerado(T);
- let sess=0; for(const r of (D.sess||[])){if(String(r.dia).slice(0,10)>=mesIni)sess+=(+r.sessoes||0)}
+ // PERÍODO AGORA SE APLICA (pedido do Gabriel, 03/10: "precisa conseguir segmentar as datas").
+ // Janela do seletor; quando ela É o mês corrente, a tela vira a leitura clássica de abrir o
+ // dia, com metas e ritmo. Metas são mensais: fora do mês corrente as quebras mostram R$ e
+ // % do total, e a "Quebra da meta" segue SEMPRE o mês corrente. Balde, tipo de cliente,
+ // canal e atribuição continuam sem efeito aqui — a definição das cinco linhas é fixa.
+ const j=jan()||[mesIni,MAX];
+ const noMes=j[0]===mesIni&&j[1]===MAX;
+ const T=dreJanela(j), cx=caixaGerado(T);
+ let sess=0; for(const r of (D.sess||[])){const d=String(r.dia).slice(0,10);if(inP(d,j))sess+=(+r.sessoes||0)}
+ // agregado da janela por categoria (mesma camada das outras telas), com filtros fixos zerados
+ const _b=S.bal,_c=S.cat,_cn=S.can,_g=S.gru; S.bal='';S.cat='';S.can='';S.gru='';
+ const A=agg(j); S.bal=_b;S.cat=_c;S.can=_cn;S.gru=_g;
+ const W={ fat:noMes?+mes.fat_total:T.faturamento,
+   novos_unica:noMes?+mes.fat_novos:A.r_novo_avulso,
+   novos_assin:noMes?+mes.novos_assinantes:A.r_novo_assinatura+A.r_antigo_inicio_assinatura,
+   qtd_assin:noMes?+mes.qtd_assin_novas:Math.round(A.p_novo_assinatura+A.p_antigo_inicio_assinatura),
+   recompra:noMes?+mes.fat_recorrente:A.r_antigo_avulso,
+   mrr:noMes?+mes.mrr:A.r_recorrente,
+   amostra:noMes?+mes.amostra:A.r_amostra,
+   qtd_amostras:noMes?+mes.qtd_amostras:Math.round(A.p_amostra),
+   qtd_novos:noMes?+mes.qtd_novos:Math.round(A.p_novo_avulso+A.p_novo_assinatura),
+   investido:noMes?+mes.custo_total:A.spend,
+   cac:noMes?+mes.cac_novos:dv(A.spend,A.p_novo_avulso+A.p_novo_assinatura) };
+ const tituloJ=noMes?null:`${DT(j[0])} a ${DT(j[1])}`;
  const mesNome=mes.mes?MSL[+String(mes.mes).slice(5,7)-1]:MSL[+MAX.slice(5,7)-1];
- const pTot=v=>mes.fat_total?PC(100*v/mes.fat_total):'—';
- // quebra: R$ + % do total + meta. As cinco somam o faturamento total, sem sobra.
+ const somaQb=W.novos_unica+W.novos_assin+W.recompra+W.mrr+W.amostra;
+ const pTot=v=>(noMes?mes.fat_total:somaQb)?PC(100*v/(noMes?mes.fat_total:somaQb)):'—';
+ // quebra: R$ + % do total (+ meta só quando a janela é o mês corrente — meta é mensal)
  const qb=(t,v,metaV,extra)=>cdS(t,R0(v),
-   `${pTot(v)} do total · meta ${R0(metaV)}${metaV?` (${PC(pctD(v,metaV))})`:''}${extra?' · '+extra:''}`);
+   `${pTot(v)} do total${noMes&&metaV?` · meta ${R0(metaV)} (${PC(pctD(v,metaV))})`:''}${extra?' · '+extra:''}`);
  // ticket sem amostra: tira a receita E os pedidos de amostra
- const pedSem=(T.pedidos||0)-(+mes.qtd_amostras||0);
- const tkSem=dv((+mes.fat_total||0)-(+mes.amostra||0), pedSem>0?pedSem:null);
+ const pedSem=(T.pedidos||0)-(W.qtd_amostras||0);
+ const tkSem=dv((W.fat||0)-(W.amostra||0), pedSem>0?pedSem:null);
  // payback — o numero que decide escalar midia, consolidado dos cohorts com custo registrado
  let pbHtml='';
  (()=>{const pb=(D.payback||[]).filter(r=>r.cac_aprox!=null&&+r.cac_aprox>0);
@@ -800,26 +823,30 @@ function pgVisao(){
    por cliente contra um CAC de ${R$(dv(sp2,cl))}. ${rz<1?'<b>A mídia ainda não se paga</b> — os dois consertos moram em Aquisição (CAC ↓, não-pago ↑) e em Base (retenção ↑).':''}</div>`})();
  const sh=(D.saude||[]).filter(p=>p.status!=='OK').map(p=>`<div class="al ${p.status==='ATRASADO'?'w':'c'}"><div><b>${p.fonte}</b> <span class="pl g">${p.tipo}</span> — ${p.status.toLowerCase()} · idade ${nf(+p.idade_horas,1)}h · SLA ${p.sla_horas}h</div></div>`).join('');
 
- return `<div class="al o"><b>Esta tela é fixa no mês corrente (${mesNome})</b> — é a leitura de abrir o dia.
-   Os filtros da barra não se aplicam aqui; a investigação mora nas outras telas.</div>
+ return `${noMes
+  ?`<div class="al o"><b>Mês corrente (${mesNome})</b> — a leitura de abrir o dia, com metas e ritmo.
+    O <b>período</b> da barra muda o recorte; balde, tipo, canal e atribuição não se aplicam aqui.</div>`
+  :`<div class="al o"><b>Período do seletor: ${tituloJ}.</b> Metas são mensais, então aparecem só com
+    período “Este mês” — e a <b>Quebra da meta</b> abaixo segue sempre o mês corrente (${mesNome}).
+    Balde, tipo, canal e atribuição não se aplicam aqui.</div>`}
  <div class="sc"><div class="gr" style="grid-template-columns:1fr">
-  <div class="cd"><div class="k">Faturamento total — ${mesNome}</div>
-   <div class="v" style="font-size:34px">${R0(mes.fat_total)}</div>
-   <div class="c"><span class="f">meta ${R0(mes.fat_meta)}</span> · ritmo ${PC(mes.pct_fat)} ·
-    <span class="f">${IN(T.pedidos)} pedidos · investido ${R0(mes.custo_total)} (orçamento ${R0(mes.custo_meta_plano)})</span></div></div>
+  <div class="cd"><div class="k">Faturamento total — ${noMes?mesNome:tituloJ}</div>
+   <div class="v" style="font-size:34px">${R0(W.fat)}</div>
+   <div class="c">${noMes?`<span class="f">meta ${R0(mes.fat_meta)}</span> · ritmo ${PC(mes.pct_fat)} · `:''}
+    <span class="f">${IN(T.pedidos)} pedidos · investido ${R0(W.investido)}${noMes?` (orçamento ${R0(mes.custo_meta_plano)})`:' · custo fecha em '+DT(FECHADO)}</span></div></div>
  </div></div>
  <div class="sc"><div class="sch"><div><h2>Quebras do faturamento</h2>
   <p>As cinco linhas somam 100% do total — mesmas linhas de <code>core.plano_mes</code>.</p></div></div>
   <div class="gr g6">
-   ${qb('Novos clientes (compra única)',mes.fat_novos,mes.fat_novos_meta)}
-   ${qb('Novos assinantes',mes.novos_assinantes,mes.novos_assinantes_meta,IN(mes.qtd_assin_novas)+' assinaturas')}
-   ${qb('Recompra',mes.fat_recorrente,mes.fat_recorrente_meta)}
-   ${qb('MRR',mes.mrr,mes.mrr_meta,'concentra no fim do mês')}
-   ${qb('Amostras',mes.amostra,mes.amostra_meta,IN(mes.qtd_amostras)+' amostras')}
+   ${qb('Novos clientes (compra única)',W.novos_unica,mes.fat_novos_meta)}
+   ${qb('Novos assinantes',W.novos_assin,mes.novos_assinantes_meta,IN(W.qtd_assin)+' assinaturas')}
+   ${qb('Recompra',W.recompra,mes.fat_recorrente_meta)}
+   ${qb('MRR',W.mrr,mes.mrr_meta,'concentra no fim do mês')}
+   ${qb('Amostras',W.amostra,mes.amostra_meta,IN(W.qtd_amostras)+' amostras')}
   </div></div>
  <div class="sc"><div class="sch"><div><h2>Indicadores</h2></div></div>
   <div class="gr g6">
-   ${cdS('CAC novos clientes',R0(mes.cac_novos),`gasto total ÷ TODOS os novos (única + assinatura, ${IN(mes.qtd_novos)}) · amostra fora · meta ${R0(mes.cac_meta)}`)}
+   ${cdS('CAC novos clientes',R0(W.cac),`gasto total ÷ TODOS os novos (única + assinatura, ${IN(W.qtd_novos)}) · amostra fora${noMes?` · meta ${R0(mes.cac_meta)}`:''}`)}
    ${cdS('Conversão do site (total)',PC(dv(100*T.pedidos,sess),2),`${IN(T.pedidos)} pedidos ÷ ${IN(sess)} sessões · inclui amostra`)}
    ${cdS('Ticket médio (geral)',R$(dv(T.faturamento,T.pedidos)),'todos os pedidos, amostra incluída')}
    ${cdS('Ticket médio (sem amostras)',R$(tkSem),`${IN(pedSem>0?pedSem:null)} pedidos pagos`)}
@@ -827,7 +854,7 @@ function pgVisao(){
    ${cdS('Resultado (com CMV)',`<span style="color:${T.resultado>=0?'var(--vd)':'var(--vm)'}">${R0(T.resultado)}</span>`,'quando o estoque precisar de reposição')}
   </div></div>
  <div class="sc"><div class="sch"><div><h2>Quebra da meta — ${mesNome}</h2>
-  <p>“Deveria estar” = meta × dias decorridos. O MRR concentra no fim do mês${APPSTLE.ativas?` (${IN(APPSTLE.fim_mes)} das ${IN(APPSTLE.ativas)} cobranças ativas no Appstle caem do dia 28 em diante)`:''}.</p></div></div>${quebraMeta(mes)}</div>
+  <p>Sempre do mês corrente, independente do período. “Deveria estar” = meta × dias decorridos. O MRR concentra no fim do mês${APPSTLE.ativas?` (${IN(APPSTLE.fim_mes)} das ${IN(APPSTLE.ativas)} cobranças ativas no Appstle caem do dia 28 em diante)`:''}.</p></div></div>${quebraMeta(mes)}</div>
  <div class="sc"><div class="sch"><div><h2>Alertas</h2></div></div>${pbHtml}${sh||'<div class="al o">Todas as fontes de dado dentro do SLA.</div>'}</div>`;
 }
 
@@ -1487,14 +1514,16 @@ function filtros(){
    <option value="liq" ${S.rec==='liq'?'selected':''}>Líquido</option>
    <option value="bruto" ${S.rec==='bruto'?'selected':''}>Bruto</option></select></div>
   <span style="font-size:11.5px;color:var(--t3)">Campanha, criativo, influenciador, nutricionista, evento, produto e oferta ficam sem opção: <b>não há dado</b> dessas dimensões hoje.</span>`;
- // Na Visão geral os filtros NÃO se aplicam (tela fixa no mês corrente) — a barra viva com o
- // corpo parado dava sensação de dash travado. Desabilita tudo menos Exportar e Atualizar.
+ // Na Visão geral o PERÍODO se aplica (03/10); balde, comparar, atribuição, canal e afins não —
+ // a definição das cinco linhas é fixa. Barra viva com corpo parado parecia dash travado,
+ // então o que não responde fica desabilitado e esmaecido, com tooltip dizendo onde usar.
  if(S.pg==='visao'){
-  const nota='Não se aplica na Visão geral — ela é fixa no mês corrente. Use nas outras telas.';
-  for(const sel of ['#fp','#fc','#fm','#fch','#fcat','#fgr','#frec','#bm','#bc','#d1','#d2'])
-   document.querySelectorAll(sel).forEach(e=>{e.disabled=true;e.title=nota});
+  const nota='Não se aplica na Visão geral — a definição é fixa. Use nas telas de investigação.';
+  for(const sel of ['#fc','#fm','#fch','#fcat','#fgr','#frec','#bm'])
+   document.querySelectorAll(sel).forEach(e=>{e.disabled=true;e.title=nota;
+    const g=e.closest('.fg')||e; g.style.opacity=.45});
   document.querySelectorAll('.chk button').forEach(e=>{e.disabled=true;e.title=nota});
-  for(const z of ['flz','flx'])document.getElementById(z)?.querySelectorAll('.fg').forEach(g=>g.style.opacity=.45);
+  const bal=document.querySelector('.chk'); if(bal&&bal.closest('.fg'))bal.closest('.fg').style.opacity=.45;
  }
 }
 function nav(){
@@ -1509,10 +1538,9 @@ function nav(){
 function render(){
  document.getElementById('pt').textContent=PGS[S.pg].t;
  const j=jan(), jc=janC(j);
- // Visão geral é fixa no mês corrente: o cabeçalho diz ISSO, não o período do seletor —
- // datas mudando com o corpo parado era meia-verdade que parecia travamento.
+ // Na Visão geral a comparação não existe — o cabeçalho mostra só o período e a atualização.
  document.getElementById('up').textContent=S.pg==='visao'
-  ?`mês corrente (${MS[+MAX.slice(5,7)-1]}/${MAX.slice(2,4)}) · atualizado ${DT(MAX)}`
+  ?`${DT(j[0])} a ${DT(j[1])} · atualizado ${DT(MAX)}`
   :`${DT(j[0])} a ${DT(j[1])}${jc?` · comparando com ${DT(jc[0])} a ${DT(jc[1])}`:''} · atualizado ${DT(MAX)}`;
  filtros(); nav();
  const el=document.getElementById('pg');
