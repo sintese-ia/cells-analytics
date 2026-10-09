@@ -293,9 +293,13 @@ from core.vw_payback_coorte order by mes, canal`,
   // Status cruza snapshot do Appstle (max(snapshot_em)), Stripe e core.assinatura_status_manual.
   // 'a_vencer' (01/10): ciclo em curso + ativa + cobrança agendada = ainda não venceu — sem isso
   // o dia 1º do mês mostrava 177 "sem_info" e R$ 40k "sumidos" que eram só cobrança por vir.
+  // a_vencer via jsonb: a coluna só existe depois de fixes/2026-10-01-ciclo-a-vencer.sql rodar
+  // no banco — lendo assim o app sobe ANTES do SQL (coluna ausente vira 0) e acende sozinho
+  // quando a view v3 for aplicada. Deploy e DDL deixam de ser acoplados.
   assinCiclo: `select mes, esperados, renovaram, cancelou, pausou, falha_pagamento,
-   ciclo_longo, sem_info, valor_sumiu, reagendado, a_vencer
-  from core.vw_assinatura_ciclo order by mes`,
+   ciclo_longo, sem_info, valor_sumiu, reagendado,
+   coalesce((to_jsonb(c)->>'a_vencer')::int, 0) a_vencer
+  from core.vw_assinatura_ciclo c order by mes`,
   // Snapshot mais recente do Appstle: a data (as telas declaram a fonte sem chumbar "30/08" no
   // texto) + concentração de cobrança no fim do mês (substitui o "7 das 13" fossilizado de julho).
   appstleSnap: `select max(snapshot_em) snapshot_em,

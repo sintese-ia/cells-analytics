@@ -11,13 +11,18 @@ const Q = require('./queries');
 
 const TPL = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8');
 
-// --- 1. extrair e checar a sintaxe do script do template
-const m = TPL.match(/<script>([\s\S]*)<\/script>/);
-if (!m) { console.error('FALHA: nao achei o <script> no template'); process.exit(1); }
-const JS = m[1];
-try { new vm.Script(JS.replace('__DATA__', '{}'), { filename: 'template.html<script>' }); }
-catch (e) { console.error('FALHA DE SINTAXE no template: ' + e.message); process.exit(1); }
-console.log('ok  sintaxe do <script> valida (' + JS.split('\n').length + ' linhas)');
+// --- 1. extrair e checar a sintaxe de CADA bloco <script> do template.
+// Nao-gulosa e por bloco: desde o widget do agente ha 2 blocos, e a regex gulosa antiga
+// capturava os dois como um so ("</script>...<script>" no meio) — o gate falhava sempre.
+const BLOCOS = [...TPL.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(x => x[1]);
+if (!BLOCOS.length) { console.error('FALHA: nao achei <script> no template'); process.exit(1); }
+BLOCOS.forEach((b, i) => {
+  try { new vm.Script(b.replace('__DATA__', '{}'), { filename: `template.html<script#${i + 1}>` }); }
+  catch (e) { console.error(`FALHA DE SINTAXE no bloco ${i + 1}: ` + e.message); process.exit(1); }
+});
+// o app e o bloco que carrega __DATA__; os demais (agente) so precisam compilar
+const JS = BLOCOS.find(b => b.includes('__DATA__')) || BLOCOS[0];
+console.log('ok  sintaxe valida em ' + BLOCOS.length + ' blocos <script> (app: ' + JS.split('\n').length + ' linhas)');
 
 // --offline: sem banco. Roda com TODAS as views vazias — e exatamente a classe de bug que o
 // gate pegou (tela que estoura quando o filtro devolve conjunto vazio). E o que o CI consegue
