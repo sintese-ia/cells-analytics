@@ -143,7 +143,10 @@ http.createServer(async (req, res) => {
   const ck = req.headers.cookie || '';
   const autenticado = ck.includes(`${COOKIE}=${TOKEN}`);
 
-  // agente "perguntar ao dado" — mesma sessão do painel, resposta JSON
+  // agente "perguntar ao dado" — mesma sessão do painel, resposta JSON.
+  // SEM ANTHROPIC_API_KEY (pedido do Gabriel, 01/11): a pergunta vai pra fila
+  // jarvis.dash_pergunta e quem responde é um Claude Code da ASSINATURA, por cron
+  // local — sem API. O widget recebe {fila:id} e faz poll em /perguntar/status.
   if (req.method === 'POST' && u.pathname === '/perguntar') {
     if (!autenticado) { res.writeHead(401, {'content-type':'application/json'}); return res.end('{"erro":"sessão expirada — recarregue e entre de novo"}'); }
     let b = ''; req.on('data', c => { b += c; if (b.length > 60000) req.destroy(); });
@@ -151,6 +154,14 @@ http.createServer(async (req, res) => {
       try {
         const { mensagens } = JSON.parse(b || '{}');
         if (!Array.isArray(mensagens) || !mensagens.length) throw new Error('pergunta vazia');
+        if (!process.env.ANTHROPIC_API_KEY) {
+          const ultima = String((mensagens[mensagens.length - 1] || {}).content || '').slice(0, 2000);
+          if (!ultima.trim()) throw new Error('pergunta vazia');
+          const r = await pool.query(
+            'insert into jarvis.dash_pergunta (pergunta) values ($1) returning id', [ultima]);
+          res.writeHead(200, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+          return res.end(JSON.stringify({ fila: r.rows[0].id }));
+        }
         const resposta = await AGENTE.perguntar(mensagens);
         res.writeHead(200, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
         res.end(JSON.stringify({ resposta }));
@@ -160,6 +171,25 @@ http.createServer(async (req, res) => {
         res.end(JSON.stringify({ erro: e.message }));
       }
     });
+  }
+
+  // poll da fila: o widget pergunta "já respondeu?" até a resposta chegar
+  if (req.method === 'GET' && u.pathname === '/perguntar/status') {
+    if (!autenticado) { res.writeHead(401, {'content-type':'application/json'}); return res.end('{"erro":"sessão expirada"}'); }
+    return (async () => {
+      try {
+        const id = parseInt(u.searchParams.get('id'), 10);
+        if (!id) throw new Error('id inválido');
+        const r = await pool.query(
+          'select status, resposta from jarvis.dash_pergunta where id=$1', [id]);
+        const row = r.rows[0] || { status: 'desconhecida', resposta: null };
+        res.writeHead(200, {'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+        res.end(JSON.stringify(row));
+      } catch (e) {
+        res.writeHead(500, {'content-type':'application/json; charset=utf-8'});
+        res.end(JSON.stringify({ erro: e.message }));
+      }
+    })();
   }
 
   if (req.method === 'POST') {

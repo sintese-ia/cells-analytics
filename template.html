@@ -1663,6 +1663,24 @@ var hist=[], btn=document.getElementById('agq-btn'), box=document.getElementById
 btn.onclick=function(){box.classList.toggle('open'); if(box.classList.contains('open'))inp.focus();};
 function add(cls,txt){var d=document.createElement('div');d.className='agq-m '+cls;d.textContent=txt;
   log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+// Sem ANTHROPIC_API_KEY o server devolve {fila:id}: a pergunta foi pra fila do banco e quem
+// responde é o Claude da assinatura (cron no Mac do Gabriel). Aqui só se faz poll até chegar.
+function poll(id,w,tent){
+  if(tent>60){w.className='agq-m agq-e';
+    w.textContent='sem resposta em 5 min — o respondedor pode estar desligado (Mac fora?). A pergunta ficou salva; tenta de novo mais tarde.';
+    sb.disabled=false;return;}
+  setTimeout(function(){
+    fetch('/perguntar/status?id='+id).then(function(r){return r.json();})
+    .then(function(j){
+      if(j.status==='respondida'&&j.resposta){w.textContent=j.resposta;
+        hist.push({role:'assistant',content:j.resposta});sb.disabled=false;inp.focus();}
+      else if(j.status==='erro'){w.className='agq-m agq-e';
+        w.textContent=j.resposta||'o respondedor falhou nessa — reformula a pergunta?';sb.disabled=false;}
+      else{w.textContent='na fila — o Claude responde em ~1–2 min… ('+Math.round(tent*5/60*10)/10+' min)';poll(id,w,tent+1);}
+    })
+    .catch(function(){poll(id,w,tent+1);});
+  },5000);
+}
 f.onsubmit=function(ev){ev.preventDefault();var q=inp.value.trim();if(!q||sb.disabled)return;
   inp.value='';add('agq-u',q);hist.push({role:'user',content:q});
   var w=add('agq-a','consultando o banco…');sb.disabled=true;
@@ -1670,11 +1688,11 @@ f.onsubmit=function(ev){ev.preventDefault();var q=inp.value.trim();if(!q||sb.dis
     body:JSON.stringify({mensagens:hist})})
   .then(function(r){return r.json();})
   .then(function(j){
-    if(j.erro){w.className='agq-m agq-e';w.textContent=j.erro;}
-    else{w.textContent=j.resposta;hist.push({role:'assistant',content:j.resposta});}
+    if(j.erro){w.className='agq-m agq-e';w.textContent=j.erro;sb.disabled=false;}
+    else if(j.fila){w.textContent='na fila — o Claude responde em ~1–2 min…';poll(j.fila,w,0);}
+    else{w.textContent=j.resposta;hist.push({role:'assistant',content:j.resposta});sb.disabled=false;inp.focus();}
   })
-  .catch(function(e){w.className='agq-m agq-e';w.textContent='falhou: '+e.message;})
-  .finally(function(){sb.disabled=false;inp.focus();});
+  .catch(function(e){w.className='agq-m agq-e';w.textContent='falhou: '+e.message;sb.disabled=false;});
 };
 })();
 </script>

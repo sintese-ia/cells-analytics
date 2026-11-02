@@ -35,7 +35,13 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
     for (const k of Object.keys(Q)) D[k] = [];
     console.log('ok  modo OFFLINE: ' + Object.keys(Q).length + ' views com zero linhas');
   } else {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false, statement_timeout: 180000 });
+    // MESMO timeout do server (120s): o gate tem que reprovar o que a produção reprova.
+    // Com 180s aqui, a query jor de 96–188s passava no smoke e estourava no server — o dash
+    // vivia de cache e ninguém via (achado da planning-d5, 01/11).
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false, statement_timeout: 120000 });
+    // ... e MESMO jit=off do server: sem isto o Postgres compila as queries (JIT) e tudo
+    // demora um múltiplo do real — o gate reprovava query que a produção roda em segundos.
+    pool.on('connect', c => c.query('SET jit = off').catch(() => {}));
     const cli = await pool.connect();
     for (const [k, sql] of Object.entries(Q)) {
       const r = await cli.query(sql);

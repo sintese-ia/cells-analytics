@@ -197,17 +197,25 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
   (array_agg(categoria order by created_at))[1] cat1 from core.vw_app_pedido where categoria<>'amostra' group by 1)
 select to_char(date_trunc('month',prim),'YYYY-MM') co,canal,cat1,count(*) cli,
  round(avg(extract(day from now()-prim))) idade from p group by 1,2,3`,
-  jor: `with ini as (select coalesce(cid,email) k, min(created_at) inicio
-  from core.vw_app_pedido where categoria in ('novo_assinatura','antigo_inicio_assinatura') group by 1),
-rv as (select coalesce(cid,email) k, count(*) n from core.vw_app_pedido where categoria='recorrente' group by 1),
-am as (select coalesce(cid,email) k, min(created_at) p from core.vw_app_pedido where categoria='amostra' group by 1),
-pr as (select coalesce(cid,email) k, min(created_at) p, (array_agg(categoria order by created_at))[1] cat
-  from core.vw_app_pedido where categoria<>'amostra' group by 1),
-e as (select coalesce(cid,email) k, created_at, categoria,
-  row_number() over (partition by coalesce(cid,email) order by created_at) rn
-  from core.vw_app_pedido where categoria<>'amostra'),
-mens as (select coalesce(cid,email) k, date_trunc('month',created_at)::date mes
-  from core.vw_app_pedido where categoria in ('recorrente','novo_assinatura','antigo_inicio_assinatura') group by 1,2)
+  // MATERIALIZAR A VIEW UMA VEZ (01/11): cada CTE varria core.vw_app_pedido de novo — eram ~7
+  // expansões da view (que é union complexo com jsonb) + 1 no ramo woo. A query cresceu com o
+  // dado até estourar o statement_timeout do server (120s; medido 96–188s), e aí TODA recarga
+  // falhava e o dash vivia do último cache bom — num restart do container, subia sem dado.
+  // Com `base as materialized` a view roda UMA vez: 96s → 16s, resultado idêntico linha a linha
+  // (conferido em 01/11 contra o dado real; a armadilha é a mesma do painel da creator em 14/08).
+  jor: `with base as materialized (
+  select coalesce(cid,email) k, created_at, categoria, sistema from core.vw_app_pedido),
+ini as (select k, min(created_at) inicio
+  from base where categoria in ('novo_assinatura','antigo_inicio_assinatura') group by 1),
+rv as (select k, count(*) n from base where categoria='recorrente' group by 1),
+am as (select k, min(created_at) p from base where categoria='amostra' group by 1),
+pr as (select k, min(created_at) p, (array_agg(categoria order by created_at))[1] cat
+  from base where categoria<>'amostra' group by 1),
+e as (select k, created_at, categoria,
+  row_number() over (partition by k order by created_at) rn
+  from base where categoria<>'amostra'),
+mens as (select k, date_trunc('month',created_at)::date mes
+  from base where categoria in ('recorrente','novo_assinatura','antigo_inicio_assinatura') group by 1,2)
 select 'am_total' e, count(*)::int n, 0::numeric v from am
 union all select 'am_sem', count(*)::int, 0 from am left join pr on pr.k=am.k and pr.p>am.p where pr.k is null
 union all select 'am_avulso', count(*)::int, 0 from am join pr on pr.k=am.k and pr.p>am.p where pr.cat='novo_avulso'
@@ -224,7 +232,7 @@ union all select 'assin_ren2', count(*)::int, 0 from ini left join rv using(k) w
 union all select 'assin_base3', count(*)::int, 0 from ini where now()-inicio > interval '95 days'
 union all select 'assin_ren3', count(*)::int, 0 from ini left join rv using(k) where now()-inicio > interval '95 days' and coalesce(rv.n,0)>=3
 union all select 'assin_ini_total', count(*)::int, 0 from ini
-union all select 'woo_sem_inicio', count(distinct coalesce(cid,email))::int, 0 from core.vw_app_pedido where sistema='woocommerce'
+union all select 'woo_sem_inicio', count(distinct k)::int, 0 from base where sistema='woocommerce'
 union all select 'falha', count(*)::int, round(sum(total)::numeric,2) from commerce.woo_orders where status='failed'
 union all select 'voltou_apos_falha', count(*)::int, 0 from mens a
   where not exists(select 1 from mens b where b.k=a.k and b.mes=a.mes+interval '1 month')
