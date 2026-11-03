@@ -17,6 +17,10 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # (~/.local/bin) nem o python3 do Xcode — sem isto o script falha calado.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# ⚠️ psycopg2 só existe no python3 DO SISTEMA (/usr/bin/python3), não no do
+# homebrew — e homebrew vem antes no PATH acima. Chamar `python3` solto resolvia
+# pro homebrew e o script morria com ModuleNotFoundError no cron (03/11).
+
 # Ambiente mínimo do login: sem estas o `claude` responde "Not logged in · Please run
 # /login" e o script marca toda pergunta como erro (diagnosticado em 01/11 — o teste com
 # `env -i HOME=...` reproduz; com USER/LOGNAME/SHELL/TMPDIR volta a autenticar).
@@ -25,7 +29,7 @@ export LOGNAME="${LOGNAME:-$USER}"
 export SHELL="${SHELL:-/bin/zsh}"
 export TMPDIR="${TMPDIR:-/tmp}"
 
-PERGUNTA_JSON=$(python3 - <<'PY'
+PERGUNTA_JSON=$(/usr/bin/python3 - <<'PYEOF'
 import os, re, json, sys
 import psycopg2
 def url():
@@ -40,12 +44,12 @@ cur.execute("""update jarvis.dash_pergunta set status='respondendo'
  returning id, pergunta""")
 r = cur.fetchone()
 print(json.dumps({'id': r[0], 'pergunta': r[1]} if r else None))
-PY
+PYEOF
 )
 [ "$PERGUNTA_JSON" = "null" ] && exit 0
 
-ID=$(echo "$PERGUNTA_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['id'])")
-PERGUNTA=$(echo "$PERGUNTA_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['pergunta'])")
+ID=$(echo "$PERGUNTA_JSON" | /usr/bin/python3 -c "import json,sys;print(json.load(sys.stdin)['id'])")
+PERGUNTA=$(echo "$PERGUNTA_JSON" | /usr/bin/python3 -c "import json,sys;print(json.load(sys.stdin)['pergunta'])")
 
 # `< /dev/null`: sob cron não há stdin e o claude espera 3s por ele antes de seguir.
 BRUTO=$(claude -p "Você é o agente 'pergunte à cells' do dash. Pergunta do Gabriel: \"$PERGUNTA\"
@@ -56,7 +60,7 @@ Responda consultando o Postgres da Cells em SOMENTE LEITURA: python3 + psycopg2,
 # extração em python, NÃO sed: resposta de verdade tem várias linhas e o sed casa
 # linha a linha — com <resposta> e </resposta> em linhas diferentes ele devolvia vazio
 # e toda pergunta real virava 'erro' (pego no teste de 01/11).
-RESPOSTA=$(printf '%s' "$BRUTO" | python3 -c "
+RESPOSTA=$(printf '%s' "$BRUTO" | /usr/bin/python3 -c "
 import re,sys
 t=sys.stdin.read()
 m=re.search(r'<resposta>(.*?)</resposta>', t, re.S)
@@ -65,7 +69,7 @@ print((m.group(1) if m else '').strip())
 
 # resposta vai por env var — interpolar texto livre dentro de heredoc python quebraria com aspas
 export RESPOSTA ID
-python3 - <<'PY'
+/usr/bin/python3 - <<'PYEOF'
 import os, re
 import psycopg2
 def url():
@@ -82,4 +86,4 @@ if resposta:
 else:
     cur.execute("update jarvis.dash_pergunta set status='erro', resposta='o respondedor não conseguiu fechar a resposta — reformula?', respondido_em=now() where id=%s",
                 (pid,))
-PY
+PYEOF
