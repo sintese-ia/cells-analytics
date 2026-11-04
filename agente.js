@@ -36,16 +36,39 @@ const TOOLS = [{
   },
 }];
 
+// O REGEX NÃO É A BARREIRA — A TRANSAÇÃO É (04/11/2026, achado F6-04 da auditoria do Codex).
+// O guarda abaixo é só triagem barata, e sozinho ele VAZA. Provado offline pela auditoria:
+//   /^\s*(select|with)\b/ aceita  SELECT set_config('default_transaction_read_only','off',false)
+//   /^\s*(select|with)\b/ aceita  WITH x AS (UPDATE t SET n=1 RETURNING n) SELECT * FROM x
+// E o `default_transaction_read_only=on` do pool é só o DEFAULT DA SESSÃO: um set_config o
+// desliga. A credencial em uso (claude_b2b) tem INSERT em 65 objetos, UPDATE em 63 e DELETE em
+// 53 — ou seja, a única coisa entre um SQL gerado por LLM e uma escrita era uma expressão regular.
+//
+// `begin read only` fecha isso de verdade: o modo read-only é fixado NA TRANSAÇÃO e não pode ser
+// alterado depois que ela começa. Dentro dela o próprio Postgres recusa INSERT/UPDATE/DELETE/DDL
+// ("cannot execute UPDATE in a read-only transaction"), e o CTE com UPDATE cai junto. O rollback
+// no fim garante que nada atravessa, e cada pergunta abre a sua própria transação — então nem um
+// set_config que tenha escapado numa chamada anterior afeta a seguinte.
 async function rodarSql(sql) {
   if (!/^\s*(select|with)\b/i.test(sql) || sql.includes(';'))
     return JSON.stringify({ erro: 'Só SELECT/WITH, uma consulta, sem ";".' });
+  let cli;
   try {
-    const r = await pool.query(sql);
+    cli = await pool.connect();
+    await cli.query('begin read only');
+    const r = await cli.query(sql);
     let s = JSON.stringify(r.rows.slice(0, 200));
     if (s.length > 20000) s = s.slice(0, 20000) + ' …(truncado)';
     return JSON.stringify({ linhas: r.rowCount, dados: s });
   } catch (e) {
     return JSON.stringify({ erro: e.message });
+  } finally {
+    if (cli) {
+      // rollback sempre, e reafirma o default da sessão caso algum set_config o tenha mexido
+      try { await cli.query('rollback'); } catch (e) {}
+      try { await cli.query('set default_transaction_read_only = on'); } catch (e) {}
+      cli.release();
+    }
   }
 }
 
