@@ -15,6 +15,8 @@ const TOKEN  = require('crypto').createHash('sha256').update('ca|' + SENHA).dige
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Pool de REQUEST (/perguntar, agente). A carga do painel tem pool proprio (`poolCarga`),
+  // justamente para nao consumir estas conexoes e travar o login enquanto recarrega.
   ssl: false, max: 4, idleTimeoutMillis: 30000, statement_timeout: 120000,
 });
 
@@ -29,30 +31,97 @@ pool.on('connect', c => c.query('SET jit = off').catch(e => console.error('[jit]
 const TPL = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8');
 let cache = { at: 0, json: null, erro: null };
 
+const norm = row => {
+  const o = {};
+  for (const [c, v] of Object.entries(row)) {
+    o[c] = (v instanceof Date) ? v.toISOString().slice(0, 10)
+         : (typeof v === 'string' && /^-?\d+\.?\d*$/.test(v) && c !== 'sku' && c !== 'mes' && c !== 'co') ? Number(v)
+         : v;
+  }
+  return o;
+};
+
+// DATA DE HOJE NO FUSO DE SAO PAULO, calculada aqui e enviada ao cliente.
+// O container roda em UTC: depois das 21h BRT o `new Date()` do servidor ja virou o dia
+// seguinte, e qualquer janela ancorada nele pularia um dia inteiro todas as noites.
+const hojeBR = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const agoraBR = () => new Intl.DateTimeFormat('sv-SE',
+  { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+
+// CARGA EM PARALELO. Era um `for` sequencial num unico cliente: medido em 04/11 contra o banco
+// de producao, as 25 queries somavam 345s (dias 41s, tempo 49s, sess 34s, assinCiclo 31s...).
+// O comentario abaixo dizia "~35s" e envelheceu dez vezes sem ninguem notar, porque o gate
+// (smoke.js) roda OFFLINE e nunca cronometra o banco.
+// Consequencia real: o timer de refresh dispara a cada TTL/2 = 300s, menor que os 345s da carga,
+// entao o painel vivia RECARREGANDO SEM PARAR (coalescido por `emVoo`) — 100% de duty cycle no
+// banco — e o dado na tela nunca tinha menos de 6 minutos. Com 6 trabalhadores a carga cai para
+// a soma do maior balde (~60-90s) e o duty cycle para ~25%.
+//
+// CONCORRENCIA CALIBRADA, NAO CHUTADA. Com 6 trabalhadores a `dias` (41s sozinha) estourou o
+// statement_timeout de 120s: as queries competem por CPU/IO e as pesadas se atropelam. Com 3 a
+// carga cai para ~2min sem nenhuma passar nem perto do limite.
+// O GARGALO DE VERDADE NAO E O LOOP, SAO AS VIEWS: `tempo` e um simples
+// `select * from core.vw_tempo_entre_etapas` e leva 49s; `assinCiclo` 31s; `dias` 41s. Enquanto
+// a camada semantica nao tiver materializacao, nenhum ajuste aqui resolve mais do que isto.
+const CONC = +process.env.CARGA_CONC || 3;
+
+// Pool SO da carga, com teto de tempo maior: ninguem espera por ela (stale-while-revalidate),
+// entao derrubar uma query de 130s por um limite pensado para request interativo so produz o
+// bloco furado que o painel acabou de aprender a denunciar. O pool de cima, que serve
+// /perguntar e o agente, continua com os 120s de request.
+const poolCarga = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: false, max: CONC, idleTimeoutMillis: 30000, statement_timeout: 240000,
+});
+poolCarga.on('connect', c => c.query('SET jit = off').catch(e => console.error('[jit carga]', e.message)));
+poolCarga.on('error', e => console.error('[pool carga]', e.message));
+
 async function carregar() {
-  const out = {};
-  const cli = await pool.connect();
-  try {
-    for (const [k, sql] of Object.entries(Q)) {
-      const r = await cli.query(sql);
-      out[k] = r.rows.map(row => {
-        const o = {};
-        for (const [c, v] of Object.entries(row)) {
-          o[c] = (v instanceof Date) ? v.toISOString().slice(0, 10)
-               : (typeof v === 'string' && /^-?\d+\.?\d*$/.test(v) && c !== 'sku' && c !== 'mes' && c !== 'co') ? Number(v)
-               : v;
-        }
-        return o;
-      });
+  const nomes = Object.keys(Q);
+  const out = {}, tempos = {}, falhas = [];
+  let i = 0;
+  async function trabalhador() {
+    for (;;) {
+      const k = nomes[i++];
+      if (!k) return;
+      const t0 = Date.now();
+      try {
+        const r = await poolCarga.query(Q[k]);
+        out[k] = r.rows.map(norm);
+        tempos[k] = Date.now() - t0;
+      } catch (e) {
+        tempos[k] = Date.now() - t0;
+        falhas.push(k);
+        console.error(`[carga] ${k} falhou em ${tempos[k]}ms: ${e.message}`);
+        // FALHA PARCIAL NAO DERRUBA O PAYLOAD INTEIRO. Antes, uma query ruim fazia o servidor
+        // servir o cache antigo COMPLETO e calado — era por isso que "nao aparecia o dia de
+        // hoje": o dado inteiro congelava na ultima carga boa, sem dizer nada na tela.
+        // Agora so o bloco que falhou fica no valor anterior, e ele vai nomeado para o cliente.
+        out[k] = (cache.json && cache.json[k]) || [];
+      }
     }
-  } finally { cli.release(); }
-  out.ger = new Date().toISOString().slice(0, 16);
+  }
+  await Promise.all(Array.from({ length: Math.min(CONC, nomes.length) }, trabalhador));
+
+  // Banco fora do ar / credencial revogada: quase tudo falha de uma vez. Nesse caso e melhor
+  // estourar e preservar o cache bom por inteiro do que publicar um painel de zeros.
+  if (falhas.length > nomes.length / 3) {
+    throw new Error(`${falhas.length} de ${nomes.length} queries falharam (${falhas.slice(0, 5).join(', ')}…)`);
+  }
+
+  const lentas = Object.entries(tempos).filter(([, ms]) => ms > 20000)
+    .sort((a, b) => b[1] - a[1]).map(([k, ms]) => `${k} ${(ms / 1000).toFixed(0)}s`);
+  if (lentas.length) console.log('[carga] lentas: ' + lentas.join(', '));
+
+  out.ger   = agoraBR();          // QUANDO o dado foi lido (nao e a data do ultimo pedido)
+  out.hoje  = hojeBR();           // ancora das janelas relativas no fuso certo
+  out.falhas = falhas;            // blocos servindo valor anterior, para a tela avisar
   return out;
 }
-// A carga fria custa ~35s (a query `jor` sozinha leva 21s, e ja era assim antes do split do
-// google — medido 18,7s contra a view antiga). Fazer o usuario esperar isso e inaceitavel: em
-// 30/07 o Gabriel clicou em Entrar quando o cache tinha acabado de expirar e a pagina ficou
-// pendurada. Regra nova: NINGUEM espera uma recarga.
+// A carga fria custa ~60-90s em paralelo (eram 345s em serie — ver `carregar`). Fazer o usuario
+// esperar isso e inaceitavel: em 30/07 o Gabriel clicou em Entrar quando o cache tinha acabado de
+// expirar e a pagina ficou pendurada. Regra nova: NINGUEM espera uma recarga.
 //
 //  - stale-while-revalidate: se ha cache, devolve na hora e revalida por tras.
 //  - pre-aquecimento no boot: o primeiro visitante ja encontra dado pronto.
@@ -229,7 +298,27 @@ http.createServer(async (req, res) => {
 }).listen(PORT, () => {
   console.log('cells-analytics on :' + PORT);
   // pre-aquece: o primeiro visitante depois de um deploy nao pode pegar 35s de carga fria
-  recarregar().catch(e => console.error('[boot] pre-aquecimento falhou:', e.message));
-  // e mantem quente, para o cache nunca expirar debaixo de um clique
-  setInterval(() => recarregar().catch(() => {}), Math.max(60000, TTL / 2)).unref();
+  // e mantem quente, para o cache nunca expirar debaixo de um clique.
+  //
+  // INTERVALO ADAPTATIVO — o `setInterval(TTL/2)` fixo criava um laco de recarga PERMANENTE.
+  // Medido em 04/11 com pg_stat_activity: tres amostras 20s apart pegaram o painel de producao
+  // no meio de uma query (`dias`, `sess`, `cbase`), sempre uma ativa, nunca ocioso. A carga
+  // levava 345s e o timer disparava a 300s, entao a proxima entrava antes de a anterior sair
+  // (coalescida por `emVoo`) e o painel nunca parava de ler o banco — 100% de duty cycle.
+  // Pior: era uma espiral, porque a propria recarga era a carga que deixava o banco lento.
+  // Regra nova: a proxima recarga espera, no minimo, o DOBRO do que a ultima levou. Assim o duty
+  // cycle fica <= 50% por construcao, mesmo que as views piorem. Se a carga ficar rapida, o
+  // intervalo volta sozinho para TTL/2 e o dado volta a ser fresco — sem ninguem reconfigurar.
+  let ultimaDuracao = 0;
+  const agendar = () => {
+    const espera = Math.max(60000, TTL / 2, ultimaDuracao * 2);
+    setTimeout(() => {
+      const t0 = Date.now();
+      recarregar().catch(() => {}).finally(() => { ultimaDuracao = Date.now() - t0; agendar(); });
+    }, espera).unref();
+  };
+  const t0 = Date.now();
+  recarregar()
+    .catch(e => console.error('[boot] pre-aquecimento falhou:', e.message))
+    .finally(() => { ultimaDuracao = Date.now() - t0; agendar(); });
 });

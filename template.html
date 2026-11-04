@@ -145,6 +145,8 @@ input[type=search]{border:1px solid var(--ln);border-radius:4px;padding:6px 9px;
    <div class="fl" id="flz"></div>
    <div class="fl" id="flx" style="margin-top:7px;display:none"></div>
   </div>
+  <!-- faixa de avisos que vale para TODA tela: bloco servindo dado anterior, janela sem dado -->
+  <div id="alg"></div>
   <div class="bdy" id="pg"></div>
  </div>
 </div>
@@ -241,6 +243,22 @@ const spend=D.spend.map(r=>({...r,dia:String(r.dia).slice(0,10)}));
 const MAX=dias.reduce((a,r)=>r.dia>a?r.dia:a,'2026-01-01');
 const MIN=dias.reduce((a,r)=>r.dia<a?r.dia:a,'9999-12-31');
 
+// ====== HOJE É HOJE, E "ÚLTIMO PEDIDO" É OUTRA COISA (04/11/2026) ======
+// MAX acumulou TRÊS papéis que não são o mesmo: (1) último dia com pedido, (2) âncora das janelas
+// relativas e (3) "atualizado em". Isso é o bug do "não dá para ver o dia atual": numa manhã sem
+// venda — ou com o cache parado numa carga antiga — MAX é um dia velho, então "Hoje" devolvia esse
+// dia velho, "Ontem" devolvia o anterior a ele, e a tela ainda escrevia "atualizado" na data do
+// último PEDIDO, que não tem relação nenhuma com quando o dado foi lido. Tudo deslizava calado.
+// Agora cada papel tem seu nome:
+//   HOJE  = data real no fuso de São Paulo, vinda do servidor (papel 2)
+//   MAX   = último dia com pedido no payload (papel 1, o legítimo)
+//   GER   = quando o payload foi lido do Postgres (papel 3)
+const HOJE=D.hoje||new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+const GER=D.ger||null;
+// Dia escolhido além do dado: "Hoje" com zero pedido é informação, não defeito — mas tem que ser
+// dito, senão tela vazia parece painel quebrado.
+const SEM_DADO_AINDA=HOJE>MAX;
+
 // Data do snapshot mais recente do Appstle (crm.appstle_subscription) — as views leem
 // max(snapshot_em) sozinhas; a tela só precisa DIZER qual é, nunca chumbar a data no texto.
 const APPSTLE=(D.appstleSnap||[])[0]||{};
@@ -254,11 +272,13 @@ const SNAP_APPSTLE=APPSTLE.snapshot_em?DT(String(APPSTLE.snapshot_em).slice(0,10
 // em dia futuro — em 06/08 havia WhatsApp ate 31/08. A fronteira honesta e o grid de midia.
 const FECHADO=(D.grid||[]).reduce((a,r)=>{const d=String(r.dia).slice(0,10);
  return (+r.spend>0&&d>a)?d:a},'2026-01-01')||MAX;
-const DIA_ABERTO=FECHADO<MAX;
+// Fronteira do GASTO contra o dia de HOJE (não contra o último pedido): o coletor do Meta roda de
+// manhã para o dia anterior, então o dia corrente está sempre aberto, tenha ele pedido ou não.
+const DIA_ABERTO=FECHADO<HOJE;
 // corta o fim de uma janela no ultimo dia fechado
 const jf=j=>j?[j[0],(j[1]>FECHADO?FECHADO:j[1])]:j;
-const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(MAX)} ainda não fechou.</b>
- O coletor de gasto do Meta vai até ${DT(FECHADO)}, então ${MAX===FECHADO?'':`o dia ${DT(MAX)} tem pedido e não tem gasto`}.
+const avisoAberto=(o)=>DIA_ABERTO?`<div class="al w"><b>${DT(HOJE)} ainda não fechou.</b>
+ O coletor de gasto do Meta vai até ${DT(FECHADO)}, então ${MAX<=FECHADO?'':`o dia ${DT(MAX)} tem pedido e não tem gasto`}.
  ${o||'As métricas de custo desta tela param em '+DT(FECHADO)+' — senão o CPA sai barato por falta de denominador.'}</div>`:'';
 // COBERTURA DE CADA CONJUNTO DE DADO. Medida do proprio payload, nao chumbada: se a janela da
 // query mudar, o aviso acompanha sozinho.
@@ -282,6 +302,35 @@ const avisoSaude=()=>{
      : 'sem atualizar há '+nf(+p.idade_horas,0)+'h (SLA '+p.sla_horas+'h)'}`).join('<br>');
   return `<div class="al c"><b>Fonte de dado com problema.</b><br>${li}<br>
    <span style="color:var(--t2)">Enquanto isso não for resolvido, gasto e ROAS estão subestimados nas datas afetadas.</span></div>`};
+// CACHE QUE MENTE. O servidor serve stale-while-revalidate: quando uma query falha, aquele bloco
+// fica com o valor da carga anterior. Isso é certo (melhor dado velho que zero), mas tem que
+// APARECER — cache calado foi o motivo de o painel "não mostrar o dia de hoje" sem reclamar de
+// nada. O servidor manda os nomes em D.falhas; aqui a tela diz quais são.
+const avisoFalhas=()=>{
+  const f=D.falhas||[]; if(!f.length)return '';
+  return `<div class="al c"><b>${f.length} bloco(s) não recarregaram e estão com o dado da leitura
+   anterior:</b> ${f.join(', ')}. <span style="color:var(--t2)">O resto da tela é atual
+   (${GER||'—'}). Não é zero, é dado antigo.</span></div>`};
+// JANELA SEM NENHUM PEDIDO. Tela vazia é indistinguível de filtro quebrado — foi exatamente a
+// leitura do Gabriel. Então quando a janela não tem pedido, a tela diz o motivo.
+const avisoJanelaVazia=()=>{
+  const j=jan(); if(!j)return '';
+  const tem=dias.some(r=>inP(r.dia,j));
+  if(tem)return '';
+  const hojeSel=j[0]===HOJE&&j[1]===HOJE;
+  return `<div class="al w"><b>Nenhum pedido entre ${DT(j[0])} e ${DT(j[1])}.</b>
+   ${hojeSel?`Hoje ainda não teve venda — o último pedido foi em <b>${DT(MAX)}</b>.`
+            :`O último pedido do histórico é de <b>${DT(MAX)}</b>.`}
+   <span style="color:var(--t2)">A tela está certa e o filtro funcionou: a janela é que está vazia.</span></div>`};
+// SELO "não obedece o período". Em Base e Amostras os cartões de cima seguem o seletor e os
+// blocos de coorte/ciclo abaixo leem o histórico inteiro — de propósito: medir renovação numa
+// janela de 1 dia não quer dizer nada, a coorte precisa de 35/65/95 dias para madurar. O defeito
+// nunca foi o filtro; era não DIZER isso. O Gabriel filtrou o diário, metade da tela mudou e
+// metade ficou parada, e a leitura óbvia foi "o filtro está quebrado".
+const SELO_HIST=' <span class="pl g" style="vertical-align:middle;font-weight:600" title="Lê o'
+ +' histórico inteiro. Coorte e ciclo precisam de meses para madurar, então o seletor de período'
+ +' não se aplica a este bloco — os cartões do topo da tela seguem o período normalmente.">'
+ +'histórico completo · fora do período</span>';
 const CANAIS=[...new Set(dias.map(r=>r.canal))].filter(c=>c!=='woo-legado'||1).sort();
 
 /* ========== estado ========== */
@@ -289,7 +338,8 @@ const S={pg:'visao',gop:{},gcanal:'',gper:'7',gsp:1,gbusca:'',gord:'rec',per:'30
  gran:'dia',ind:'liq',srt:{},oc:{},mais:false,d1:'',d2:''};
 function addD(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function jan(){
- const f=MAX;
+ // ÂNCORA = HOJE DE VERDADE, não o último dia com pedido (ver bloco HOJE/MAX acima).
+ const f=HOJE;
  switch(S.per){
   case 'hoje':return[f,f];
   case 'ontem':return[addD(f,-1),addD(f,-1)];
@@ -474,8 +524,11 @@ function serie(j,g,diaMax){
 // Comparado dia-a-dia (ate o dia 29), julho era o MELHOR mes, nao o pior.
 // Enquanto o mes corrente nao fecha, ele nunca pode ser comparado com mes inteiro.
 const ultimoDiaDoMes = k => new Date(Date.UTC(+k.slice(0,4), +k.slice(5,7), 0)).getUTCDate();
-const DIACORTE = +MAX.slice(8,10);
-const MESPARC  = DIACORTE < ultimoDiaDoMes(MAX) ? MAX.slice(0,7) : null;
+// Corte pelo dia de HOJE: o mês corrente é parcial porque ele não acabou, não porque a última
+// venda foi no dia 3. Ancorar em MAX fazia um mês fechado parecer parcial (e vice-versa) sempre
+// que o último pedido não caísse no último dia do mês.
+const DIACORTE = +HOJE.slice(8,10);
+const MESPARC  = DIACORTE < ultimoDiaDoMes(HOJE) ? HOJE.slice(0,7) : null;
 function semK(d){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()-x.getDay());return x.toISOString().slice(0,10)}
 
 /* ========== métricas (camada semântica única) ========== */
@@ -777,14 +830,14 @@ function pgAquisicao(){
 // a investigacao mora nas outras telas.
 function pgVisao(){
  const mes=mesCorrente();
- const mesIni=MAX.slice(0,7)+'-01';
+ const mesIni=HOJE.slice(0,7)+'-01';
  // PERÍODO AGORA SE APLICA (pedido do Gabriel, 03/10: "precisa conseguir segmentar as datas").
  // Janela do seletor; quando ela É o mês corrente, a tela vira a leitura clássica de abrir o
  // dia, com metas e ritmo. Metas são mensais: fora do mês corrente as quebras mostram R$ e
  // % do total, e a "Quebra da meta" segue SEMPRE o mês corrente. Balde, tipo de cliente,
  // canal e atribuição continuam sem efeito aqui — a definição das cinco linhas é fixa.
- const j=jan()||[mesIni,MAX];
- const noMes=j[0]===mesIni&&j[1]===MAX;
+ const j=jan()||[mesIni,HOJE];
+ const noMes=j[0]===mesIni&&j[1]===HOJE;
  const T=dreJanela(j), cx=caixaGerado(T);
  let sess=0; for(const r of (D.sess||[])){const d=String(r.dia).slice(0,10);if(inP(d,j))sess+=(+r.sessoes||0)}
  // agregado da janela por categoria (mesma camada das outras telas), com filtros fixos zerados
@@ -802,7 +855,7 @@ function pgVisao(){
    investido:noMes?+mes.custo_total:A.spend,
    cac:noMes?+mes.cac_novos:dv(A.spend,A.p_novo_avulso+A.p_novo_assinatura) };
  const tituloJ=noMes?null:`${DT(j[0])} a ${DT(j[1])}`;
- const mesNome=mes.mes?MSL[+String(mes.mes).slice(5,7)-1]:MSL[+MAX.slice(5,7)-1];
+ const mesNome=mes.mes?MSL[+String(mes.mes).slice(5,7)-1]:MSL[+HOJE.slice(5,7)-1];
  const somaQb=W.novos_unica+W.novos_assin+W.recompra+W.mrr+W.amostra;
  const pTot=v=>(noMes?mes.fat_total:somaQb)?PC(100*v/(noMes?mes.fat_total:somaQb)):'—';
  // quebra: R$ + % do total (+ meta só quando a janela é o mês corrente — meta é mensal)
@@ -884,7 +937,7 @@ function pgAmostras(){
    ${cdS('Receita de amostra',R0(A.r_amostra),'entra no faturamento, nunca no CAC')}
    ${cdS('CAC por amostra',R$(dv(spAm,qAm)),`gasto dos conjuntos de amostra ÷ amostras que entregaram (${IN(qAm)}) · período fechado`)}
    ${cdS('Conversão amostra → pagante',PC((conv||0)*100),'histórico completo')}
-   ${cdS('Tempo até converter',t1?IN(t1.mediana_dias)+' dias':'—',t1?`mediana · P25 ${IN(t1.p25_dias)}d · P75 ${IN(t1.p75_dias)}d`:'')}
+   ${cdS('Tempo até converter',t1?IN(t1.mediana_dias)+' dias':'—',t1?`mediana · P25 ${IN(t1.p25_dias)}d · P75 ${IN(t1.p75_dias)}d · histórico completo`:'')}
   </div></div>
  <div class="sc"><div class="sch"><div><h2>Funil da amostra — histórico completo</h2>
   <p>Quem recebeu amostra alguma vez, e o que fez depois. A conversão é a razão de existir do motor.</p></div></div>
@@ -894,7 +947,7 @@ function pgAmostras(){
    ${fnB(amAs,'viraram cliente — assinatura',amT)}
    ${fnB(amSem,'nunca compraram',amT)}
   </div></div></div></div>
- <div class="sc"><div class="sch"><div><h2>Amostras por mês</h2></div></div>
+ <div class="sc"><div class="sch"><div><h2>Amostras por mês${SELO_HIST}</h2></div></div>
   <div class="tw"><table><thead><tr><th class="l">Mês</th><th>Amostras</th><th>Receita</th></tr></thead>
   <tbody>${tbl||'<tr><td colspan="3" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
  <div class="sc"><div class="al w"><b>CAC por amostra é métrica de conjunto, não de balde.</b> O mesmo
@@ -937,7 +990,7 @@ function pgBase(){
    <td>${IN(t.pessoas)}</td><td>${IN(t.nao_deram_o_passo)}</td><td>${IN(t.mediana_dias)}d</td>
    <td class="t3">${IN(t.p25_dias)}–${IN(t.p75_dias)}d</td></tr>`).join('');
  return `<div class="sc"><div class="gr g6">${['renov','rrec','pcrec','antc','txant'].map(k=>CD(k,A,B)).join('')}</div></div>
- <div class="sc"><div class="sch"><div><h2>O que aconteceu com as assinaturas — ciclo a ciclo</h2>
+ <div class="sc"><div class="sch"><div><h2>O que aconteceu com as assinaturas — ciclo a ciclo${SELO_HIST}</h2>
   <p>Quem pagou assinatura num mês era esperado no seguinte. <b>Renovou, falhou o pagamento,
   cancelou, pausou — ou só reagendou?</b> Status cruzado de Appstle (snapshot ${SNAP_APPSTLE}), Stripe e
   auditoria manual. <b>Reagendado renova no mês seguinte: não é churn.</b> <b>A vencer</b> é a
@@ -953,21 +1006,21 @@ function pgBase(){
   <div class="tw"><table><thead><tr><th class="l">E-mail</th><th class="l">O que houve</th>
    <th class="l">Detalhe</th><th>Valor/mês</th><th>Última cobrança</th></tr></thead>
    <tbody>${det||'<tr><td colspan="5" class="emp">Ninguém sumiu neste ciclo.</td></tr>'}</tbody></table></div></div>`:''}
- <div class="sc"><div class="sch"><div><h2>Curva de renovação — coortes maduras</h2>
+ <div class="sc"><div class="sch"><div><h2>Curva de renovação — coortes maduras${SELO_HIST}</h2>
   <p>De quem iniciou assinatura (e teve tempo), quantos chegaram à 1ª, 2ª e 3ª cobrança.</p></div></div>
   <div class="pn"><div class="pnb"><div class="fn">
    ${fnB(jr.assin_ren1?.n,'chegaram à 1ª renovação',jr.assin_base1?.n)}
    ${fnB(jr.assin_ren2?.n,'chegaram à 2ª renovação',jr.assin_base2?.n)}
    ${fnB(jr.assin_ren3?.n,'chegaram à 3ª renovação',jr.assin_base3?.n)}
   </div></div></div></div>
- <div class="sc"><div class="sch"><div><h2>Compra única — recompra</h2></div></div>
+ <div class="sc"><div class="sch"><div><h2>Compra única — recompra${SELO_HIST}</h2></div></div>
   <div class="pn"><div class="pnb"><div class="fn">
    ${fnB(jr.p1_avulsa?.n,'1ª compra avulsa')}
    ${fnB(jr.p1_2a_avulsa?.n,'fizeram 2ª compra avulsa',jr.p1_avulsa?.n)}
    ${fnB(jr.p1_para_assin?.n,'viraram assinatura depois',jr.p1_avulsa?.n)}
    ${fnB(jr.p1_sem_recompra?.n,'nunca recompraram',jr.p1_avulsa?.n)}
   </div></div></div></div>
- <div class="sc"><div class="sch"><div><h2>Tempo entre etapas</h2>
+ <div class="sc"><div class="sch"><div><h2>Tempo entre etapas${SELO_HIST}</h2>
   <p>Mediana, não média — a distribuição tem cauda longa. Diz QUANDO agir em quem não recomprou.</p></div></div>
   <div class="tw"><table><thead><tr><th class="l">Etapa</th><th>Deram o passo</th><th>Não deram</th>
    <th>Mediana</th><th>P25–P75</th></tr></thead><tbody>${tempos||'<tr><td colspan="5" class="emp">Sem dados.</td></tr>'}</tbody></table></div></div>
@@ -1494,8 +1547,8 @@ function filtros(){
   </div></div>
   <div class="fg"><label for="fp">Período</label><select id="fp">${PER.map(([v,n])=>`<option value="${v}" ${S.per===v?'selected':''}>${n}</option>`).join('')}</select></div>
   ${S.per==='custom'?`<div class="fg"><label>De · até</label><div style="display:flex;gap:5px">
-   <input type="date" id="d1" value="${S.d1||MIN}" min="${MIN}" max="${MAX}" aria-label="Data inicial">
-   <input type="date" id="d2" value="${S.d2||MAX}" min="${MIN}" max="${MAX}" aria-label="Data final"></div></div>`:''}
+   <input type="date" id="d1" value="${S.d1||MIN}" min="${MIN}" max="${HOJE}" aria-label="Data inicial">
+   <input type="date" id="d2" value="${S.d2||HOJE}" min="${MIN}" max="${HOJE}" aria-label="Data final"></div></div>`:''}
   <div class="fg"><label for="fc">Comparar</label><select id="fc">${CMP.map(([v,n])=>`<option value="${v}" ${S.cmp===v?'selected':''}>${n}</option>`).join('')}</select></div>
   <div class="fg"><label for="fm">Atribuição</label><select id="fm">${MOD.map(([v,n])=>`<option value="${v}" ${S.mod===v?'selected':''}>${n}${v==='sintese'?' ★ recomendado':''}</option>`).join('')}</select></div>
   <div class="fg"><label for="fch">Canal</label><select id="fch"><option value="">Todos</option>${CANAIS.map(c=>`<option value="${c}" ${S.can===c?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -1532,17 +1585,24 @@ function nav(){
    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="${v.ic}"/></svg>
    <span class="lb">${v.t}</span></button>`).join('');
  const tp=dias.reduce((a,r)=>a+r.pedidos,0);
- document.getElementById('ft').innerHTML=`Snapshot de ${DT(MAX)}<br>${IN(tp)} pedidos · ${IN(D.cbase.reduce((a,c)=>a+c.cli,0))} clientes<br><span style="color:var(--lj)">dado real de produção</span>`;
+ // Rodapé: as duas datas separadas e nomeadas. "Snapshot de <último pedido>" fazia o painel
+ // parecer parado quando era só um dia sem venda — e parecer atual quando o cache estava velho.
+ document.getElementById('ft').innerHTML=`Lido do Postgres ${GER?GER.replace(' ',' às '):'—'}<br>
+  último pedido ${DT(MAX)}<br>${IN(tp)} pedidos · ${IN(D.cbase.reduce((a,c)=>a+c.cli,0))} clientes<br>
+  <span style="color:var(--lj)">dado real de produção</span>`;
 }
 /* ==================== render ==================== */
 function render(){
  document.getElementById('pt').textContent=PGS[S.pg].t;
  const j=jan(), jc=janC(j);
  // Na Visão geral a comparação não existe — o cabeçalho mostra só o período e a atualização.
+ // "atualizado" = quando o payload foi LIDO (GER), nunca a data do último pedido.
+ const sel=S.per==='hoje'?`Hoje, ${DT(j[0])}`:S.per==='ontem'?`Ontem, ${DT(j[0])}`:`${DT(j[0])} a ${DT(j[1])}`;
  document.getElementById('up').textContent=S.pg==='visao'
-  ?`${DT(j[0])} a ${DT(j[1])} · atualizado ${DT(MAX)}`
-  :`${DT(j[0])} a ${DT(j[1])}${jc?` · comparando com ${DT(jc[0])} a ${DT(jc[1])}`:''} · atualizado ${DT(MAX)}`;
+  ?`${sel} · lido ${GER||'—'}`
+  :`${sel}${jc?` · comparando com ${DT(jc[0])} a ${DT(jc[1])}`:''} · lido ${GER||'—'}`;
  filtros(); nav();
+ document.getElementById('alg').innerHTML=avisoFalhas()+avisoJanelaVazia();
  const el=document.getElementById('pg');
  el.innerHTML=`<div class="gr g6">${'<div class="cd"><div class="sk" style="width:55%"></div><div class="sk" style="height:24px;margin-top:9px"></div></div>'.repeat(6)}</div>`;
  requestAnimationFrame(()=>{

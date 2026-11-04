@@ -59,6 +59,11 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
     cli.release(); await pool.end();
   }
   D.ger = new Date().toISOString().slice(0, 16);
+  // O servidor manda `hoje` (data real no fuso de SP) e `falhas`. Sem eles aqui, o gate testava
+  // um payload que a producao nunca produz — e a ancora das janelas caia no fallback do browser.
+  D.hoje = new Intl.DateTimeFormat('en-CA',
+    { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  D.falhas = [];
 
   // --- 2. sandbox com DOM minimo: so o suficiente para as funcoes de pagina rodarem
   const els = {};
@@ -98,6 +103,47 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
   for (const n of Object.getOwnPropertyNames(ctx)) if (/^pg[A-Z]/.test(n) && typeof ctx[n] === 'function') FN[n] = ctx[n];
   console.log('ok  ' + Object.keys(FN).length + ' funcoes de pagina encontradas: ' + Object.keys(FN).join(', '));
 
+  // --- 2b. PERIODOS LIDOS DO PROPRIO APP, nunca redigitados aqui.
+  // Lista escrita a mao no gate foi o que permitiu testar cinco periodos inexistentes durante
+  // meses. Extraindo do seletor, o gate nao pode mais divergir do app em silencio.
+  const PERIODOS = [...JS.matchAll(/const PER=\[(.*?)\];/gs)]
+    .flatMap(m => [...m[1].matchAll(/\['([a-z0-9]+)'/g)].map(x => x[1]));
+  if (PERIODOS.length < 5) {
+    console.error('FALHA: nao consegui ler a lista de periodos do template (achei ' + PERIODOS.length + ')');
+    process.exit(1);
+  }
+  console.log('ok  ' + PERIODOS.length + ' periodos lidos do seletor: ' + PERIODOS.join(', '));
+
+  // CADA PERIODO TEM QUE PRODUZIR UMA JANELA PROPRIA. Se dois caem na mesma janela, algum deles
+  // nao esta implementado e esta escorregando para o `default` do switch — exatamente o defeito
+  // que o Gabriel sentia como "filtrei e nao foi". `custom` fica fora: depende de d1/d2.
+  const janelas = {};
+  for (const p of PERIODOS.filter(p => p !== 'custom')) {
+    ctx.S.per = p;
+    let j;
+    try { j = new vm.Script('jan()').runInContext(ctx); }
+    catch (e) { console.error(`FALHA: jan() estourou no periodo '${p}': ${e.message}`); process.exit(1); }
+    if (!Array.isArray(j) || !j[0] || !j[1]) { console.error(`FALHA: periodo '${p}' devolveu janela invalida: ${JSON.stringify(j)}`); process.exit(1); }
+    janelas[p] = j.join('..');
+  }
+  const dup = Object.entries(janelas).filter(([p, v]) =>
+    Object.entries(janelas).some(([q, w]) => q !== p && w === v));
+  if (dup.length) {
+    console.error('FALHA: periodos com a MESMA janela (algum nao esta implementado): '
+      + dup.map(([p, v]) => `${p}=${v}`).join(' | '));
+    process.exit(1);
+  }
+  // E "hoje" tem que ser HOJE, nao o ultimo dia com pedido — a confusao que fazia o painel
+  // mostrar um dia velho quando a manha estava sem venda ou o cache estava parado.
+  ctx.S.per = 'hoje';
+  const jHoje = new vm.Script('jan()').runInContext(ctx);
+  if (jHoje[0] !== D.hoje || jHoje[1] !== D.hoje) {
+    console.error(`FALHA: periodo 'hoje' devolveu ${jHoje.join('..')} e hoje e ${D.hoje}`);
+    process.exit(1);
+  }
+  console.log('ok  periodo "hoje" = ' + D.hoje + ' e as ' + Object.keys(janelas).length + ' janelas sao distintas');
+  ctx.S.per = '30';
+
   // --- 3. cenarios de filtro
   const canais = [...new Set((D.dias || []).map(r => r.canal_aq).filter(Boolean))].slice(0, 5);
   const cats   = [...new Set((D.dias || []).map(r => r.categoria).filter(Boolean))];
@@ -106,8 +152,16 @@ const OFFLINE = process.argv.includes('--offline') || !process.env.DATABASE_URL;
   canais.forEach(c => CEN.push({ can: c }));
   cats.forEach(c => CEN.push({ cat: c }));
   grupos.filter(Boolean).forEach(g => CEN.push({ gru: g }));
-  CEN.push({ per: '7d' }, { per: '30d' }, { per: '90d' }, { per: 'ytd' }, { per: 'all' });
-  CEN.push({ mod: 'first' }, { mod: 'last' }, { bruto: 1 });
+  // PERIODOS REAIS. Ate 04/11 estavam aqui '7d','30d','90d','ytd','all' — valores que o app NAO
+  // conhece: todos caiam no `default` do `switch` de `jan()`, entao o gate NUNCA testou um unico
+  // periodo de verdade em 22 cenarios. Foi assim que bug de data passou deploy atras de deploy
+  // enquanto o gate dizia "TUDO OK". Os valores abaixo sao exatamente os do seletor da barra.
+  PERIODOS.forEach(p => CEN.push({ per: p }));
+  CEN.push({ per: 'custom', d1: D.hoje, d2: D.hoje });                    // um dia so
+  CEN.push({ per: 'custom', d1: '2025-01-01', d2: D.hoje });              // historico inteiro
+  CEN.push({ per: 'custom', d1: D.hoje, d2: '2025-01-01' });              // invertido, de proposito
+  CEN.push({ per: 'custom', d1: '', d2: '' });                            // vazio
+  CEN.push({ mod: 'first' }, { mod: 'last' }, { rec: 'bruto' });
   CEN.push({ can: canais[0], cat: cats[0] });
   CEN.push({ can: 'canal_que_nao_existe' });          // caso vazio
   CEN.push({ cat: 'categoria_inexistente' });          // caso vazio
