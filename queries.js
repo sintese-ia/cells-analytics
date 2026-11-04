@@ -173,7 +173,14 @@ group by 1,2,3,4,5,6,7,8,9,10,11`,
   prim as (select user_id, min(ts) primeira from s where user_id is not null group by 1)
  -- mesma traducao de nivel da query dias: sem ela Sessions/NV se penduram numa chave que a arvore
  -- (ja resolvida) nao tem mais, e a coluna zera justo nas campanhas de convencao torta.
- select s.ts::date dia, s.canal, coalesce(u.campanha_real, s.campanha) campanha,
+ -- DIA EM SAO PAULO, igual ao do pedido (achado F4-03 da auditoria, 02/11; conferido em 04/11).
+ -- web.sessions.timestamp e "timestamp without time zone" guardando UTC, e a sessao do banco
+ -- roda em Etc/UTC — entao s.ts::date dava o dia UTC. Receita vem de vw_app_pedido.dia, que e
+ -- dia de Sao Paulo. Resultado: o funil sessao->compra comparava sessoes de um dia com pedidos
+ -- de outro em 4.770 dos 28.222 eventos de outubro (17%), e a distorcao se concentra nas 21h-00h
+ -- BRT, que e exatamente a faixa de maior trafego. Agora os dois lados usam o mesmo calendario.
+ select (s.ts at time zone 'UTC' at time zone 'America/Sao_Paulo')::date dia,
+   s.canal, coalesce(u.campanha_real, s.campanha) campanha,
    coalesce(u.conjunto_real, s.conjunto) conjunto,
    coalesce(u.anuncio_real,  s.anuncio)  anuncio,
    count(*) sessoes,

@@ -207,7 +207,33 @@ p{color:#5A5A57;font-size:13.5px;line-height:1.6}</style></head><body><div class
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
+  // SEPARA "processo vivo" de "dado válido" (achado F4-02 da auditoria). /healthz respondia 'ok'
+  // sempre — inclusive com o cache parado há horas e blocos furados, que é justo o estado em que
+  // alguém precisa saber.
+  //
+  // /healthz continua sendo LIVENESS e continua 200 incondicional, DE PROPÓSITO: se o EasePanel
+  // usa esta rota como health check do container, devolver 503 durante a carga de boot (~2-4min,
+  // quando ainda não há cache) poria o serviço num laço de restart — trocaria um problema de
+  // observabilidade por uma queda de verdade.
+  // /dado é a rota nova, para monitor: 200 só com dado presente e recente, 503 com o motivo.
   if (u.pathname === '/healthz') { res.writeHead(200, {'content-type':'text/plain'}); return res.end('ok'); }
+  if (u.pathname === '/dado') {
+    const idade = cache.at ? Math.round((Date.now() - cache.at) / 1000) : null;
+    const falhas = (cache.json && cache.json.falhas) || [];
+    const limite = Math.round((TTL * 3) / 1000);   // 3 TTLs sem recarregar = dado não confiável
+    const problemas = [];
+    if (!cache.json) problemas.push('sem dado carregado');
+    else if (idade > limite) problemas.push(`cache com ${idade}s (limite ${limite}s)`);
+    if (cache.erro) problemas.push('ultima recarga falhou: ' + cache.erro);
+    if (falhas.length) problemas.push(`${falhas.length} bloco(s) com dado anterior: ${falhas.join(',')}`);
+    const corpo = JSON.stringify({
+      ok: problemas.length === 0, idade_s: idade, lido: cache.json ? cache.json.ger : null,
+      blocos_furados: falhas, problemas,
+    });
+    res.writeHead(problemas.length ? 503 : 200,
+      {'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+    return res.end(corpo);
+  }
 
   const ck = req.headers.cookie || '';
   const autenticado = ck.includes(`${COOKIE}=${TOKEN}`);
